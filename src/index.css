@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* 'Natural Tones' Color Theme Core Palette */
+  --color-natural-bg: #FAF9F6;
+  --color-natural-text: #2D2D2D;
+  --color-natural-olive: #5B5C3D;
+  --color-natural-dark-olive: #4A4B31;
+  --color-natural-soft-olive: #8C8D6F;
+  --color-natural-border: #E5E2D9;
+  --color-natural-border-warm: #D9D6CB;
+  --color-natural-sand: #F3F2EB;
+  --color-natural-ivory: #FDFCFB;
+
+  /* Mapping standard Tailwind colors to skin components naturally */
+  --color-amber-50: #FAF9F6;
+  --color-amber-100: #F3F2EB;
+  --color-amber-200: #E5E2D9;
+  --color-amber-300: #D9D6CB;
+  --color-amber-400: #8C8D6F;
+  --color-amber-500: #5B5C3D;
+  --color-amber-600: #4A4B31;
+  --color-amber-700: #353625;
+  --color-amber-800: #232418;
+  --color-amber-900: #1C1D13;
+
+  --color-stone-50: #FDFCFB;
+  --color-stone-100: #F3F2EB;
+  --color-stone-200: #E5E2D9;
+  --color-stone-300: #D9D6CB;
+  --color-stone-400: #8C8D6F;
+  --color-stone-500: #6B6C4D;
+  --color-stone-600: #5B5C3D;
+  --color-stone-700: #4A4B31;
+  --color-stone-800: #353625;
+  --color-stone-900: #2D2D2D;
+  --color-stone-950: #1C1D13;
+}
+
+/* Custom styling extensions */
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: var(--font-serif);
+  color: #1c1917; /* stone-900 */
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.prose h1 { font-size: 1.875rem; }
+.prose h2 { font-size: 1.5rem; }
+.prose h3 { font-size: 1.25rem; }
+
+.prose p {
+  margin-top: 0;
+  margin-bottom: 1.25em;
+  line-height: 1.75;
+}
+
+.prose ul, .prose ol {
+  margin-top: 0;
+  margin-bottom: 1.25em;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.prose blockquote {
+  font-style: italic;
+  border-left: 4px solid #d97706; /* amber-600 */
+  padding-left: 1rem;
+  color: #44403c; /* stone-700 */
+  margin: 1.5em 0;
+}
