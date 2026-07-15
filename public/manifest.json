@@ -1,0 +1,37 @@
+{
+  "name": "AsooYeshua Ministry",
+  "short_name": "AsooYeshua",
+  "description": "Gospel of Jesus Christ Promotion, Sermon Blog, and Digital Marketplace chaired by Tersoo Terence Aker.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121210",
+  "theme_color": "#f59e0b",
+  "orientation": "any",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ]
+}

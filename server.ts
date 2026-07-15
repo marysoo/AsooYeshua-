@@ -16,7 +16,14 @@ let ai: GoogleGenAI | null = null;
 
 if (aiApiKey && aiApiKey !== 'MY_GEMINI_API_KEY') {
   try {
-    ai = new GoogleGenAI({ apiKey: aiApiKey });
+    ai = new GoogleGenAI({
+      apiKey: aiApiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
     console.log('Google GenAI initialized successfully.');
   } catch (err) {
     console.error('Failed to initialize Google GenAI:', err);
@@ -28,6 +35,24 @@ if (aiApiKey && aiApiKey !== 'MY_GEMINI_API_KEY') {
 // Enable JSON body parsing
 app.use(express.json());
 
+// Helper function for offline/fallback pastoral responses
+function getFallbackResponse(messages: any[]) {
+  const lastMessage = messages[messages.length - 1]?.content || '';
+  let reply = "Hello! Thank you for reaching out to AsooYeshua Ministry. I am currently running in offline prayer mode. Yes, Tersoo Terence Aker (AsooYeshua) would love to connect with you! To book a call directly, please use the Reservation Form on the screen or click the 'Book Call' tab so we can schedule a time and notify AsooYeshua on WhatsApp.";
+  
+  const lastMsgLower = lastMessage.toLowerCase();
+  if (lastMsgLower.includes('hello') || lastMsgLower.includes('hi')) {
+    reply = "Blessed day! Welcome to AsooYeshua Ministry, chaired by Tersoo Terence Aker (AsooYeshua). How can I assist you in your walk of faith today? You can ask me about AsooYeshua's sermons, digital books in our Marketplace, or book a private phone/WhatsApp consultation with him.";
+  } else if (lastMsgLower.includes('sermon') || lastMsgLower.includes('blog') || lastMsgLower.includes('preach')) {
+    reply = "AsooYeshua has written several powerful messages on the Gospel of Grace, Biblical Faith, and the Great Commission. You can view all of them under our 'Blog' tab, and even purchase full sermon series and books in our 'Marketplace'!";
+  } else if (lastMsgLower.includes('marketplace') || lastMsgLower.includes('book') || lastMsgLower.includes('buy')) {
+    reply = "Our Marketplace contains inspiring materials written and recorded by Tersoo Terence Aker to equip your faith. These include the 'Foundations of Faith Guidebook', 'Sermons of Grace Audio Series', and our '365 Devotional'. You can easily purchase them via Flutterwave and download them instantly!";
+  } else if (lastMsgLower.includes('call') || lastMsgLower.includes('talk') || lastMsgLower.includes('schedule') || lastMsgLower.includes('phone')) {
+    reply = "AsooYeshua would be glad to pray with you or discuss your inquiries. Please click the 'Book Call' button or fill out the call reservation form in this panel. Once booked, a direct notification will be prepared for his WhatsApp so he can reach out to you!";
+  }
+  return reply;
+}
+
 // API: AI Assistant
 app.post('/api/assistant', async (req, res) => {
   const { messages } = req.body;
@@ -38,19 +63,7 @@ app.post('/api/assistant', async (req, res) => {
 
   // Fallback if AI is not configured
   if (!ai) {
-    const lastMessage = messages[messages.length - 1]?.content || '';
-    let reply = "Hello! Thank you for reaching out to AsooYeshua Ministry. I am currently running in offline prayer mode. Yes, Tersoo Terence Aker (AsooYeshua) would love to connect with you! To book a call directly, please use the Reservation Form on the screen or click the 'Book Call' tab so we can schedule a time and notify AsooYeshua on WhatsApp.";
-    
-    if (lastMessage.toLowerCase().includes('hello') || lastMessage.toLowerCase().includes('hi')) {
-      reply = "Blessed day! Welcome to AsooYeshua Ministry, chaired by Tersoo Terence Aker (AsooYeshua). How can I assist you in your walk of faith today? You can ask me about AsooYeshua's sermons, digital books in our Marketplace, or book a private phone/WhatsApp consultation with him.";
-    } else if (lastMessage.toLowerCase().includes('sermon') || lastMessage.toLowerCase().includes('blog') || lastMessage.toLowerCase().includes('preach')) {
-      reply = "AsooYeshua has written several powerful messages on the Gospel of Grace, Biblical Faith, and the Great Commission. You can view all of them under our 'Blog' tab, and even purchase full sermon series and books in our 'Marketplace'!";
-    } else if (lastMessage.toLowerCase().includes('marketplace') || lastMessage.toLowerCase().includes('book') || lastMessage.toLowerCase().includes('buy')) {
-      reply = "Our Marketplace contains inspiring materials written and recorded by Tersoo Terence Aker to equip your faith. These include the 'Foundations of Faith Guidebook', 'Sermons of Grace Audio Series', and our '365 Devotional'. You can easily purchase them via Flutterwave and download them instantly!";
-    } else if (lastMessage.toLowerCase().includes('call') || lastMessage.toLowerCase().includes('talk') || lastMessage.toLowerCase().includes('schedule') || lastMessage.toLowerCase().includes('phone')) {
-      reply = "AsooYeshua would be glad to pray with you or discuss your inquiries. Please click the 'Book Call' button or fill out the call reservation form in this panel. Once booked, a direct notification will be prepared for his WhatsApp so he can reach out to you!";
-    }
-
+    const reply = getFallbackResponse(messages);
     return res.json({ response: reply });
   }
 
@@ -72,9 +85,9 @@ Tone: Pastoral, compassionate, biblically sound, encouraging, respectful, and pr
       parts: [{ text: m.content }]
     }));
 
-    // Call Gemini 2.5 Flash
+    // Call Gemini 3.5 Flash
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
@@ -87,7 +100,10 @@ Tone: Pastoral, compassionate, biblically sound, encouraging, respectful, and pr
     return res.json({ response: replyText });
   } catch (error: any) {
     console.error('Error generating AI response:', error);
-    return res.status(500).json({ error: 'Failed to generate response', details: error.message });
+    // If Gemini fails (key issue, quota, model deprecation, network failure),
+    // gracefully fall back to offline pastoral replies to keep the UX perfect.
+    const reply = getFallbackResponse(messages);
+    return res.json({ response: reply });
   }
 });
 
