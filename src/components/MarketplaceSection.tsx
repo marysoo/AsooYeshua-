@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Headphones, Calendar, ArrowRight, Download, CheckCircle, ShoppingBag, CreditCard, Mail, User, Phone, HelpCircle, FileText, Globe, Copy, ExternalLink, Check, Smartphone, Laptop } from 'lucide-react';
 import { collection, getDocs, addDoc, doc, getDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Product } from '../types';
 
 declare const FlutterwaveCheckout: any;
@@ -33,6 +33,7 @@ export default function MarketplaceSection({
     phone: ''
   });
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [submittedDirectPayDetails, setSubmittedDirectPayDetails] = useState(false);
   const [txRef, setTxRef] = useState('');
   const [guideTab, setGuideTab] = useState<'ios' | 'android' | 'desktop'>('ios');
   const [copied, setCopied] = useState(false);
@@ -58,35 +59,67 @@ export default function MarketplaceSection({
     };
   }, []);
 
+  // Synchronize showCheckoutModal with window hash to handle browser Back button gracefully
+  useEffect(() => {
+    if (showCheckoutModal) {
+      if (window.location.hash !== '#checkout') {
+        window.history.pushState({ modal: 'checkout' }, '', '#checkout');
+      }
+    } else {
+      if (window.location.hash === '#checkout') {
+        window.history.back();
+      }
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (window.location.hash !== '#checkout' && showCheckoutModal) {
+        setShowCheckoutModal(false);
+        setSubmittedDirectPayDetails(false);
+        setPaymentSuccess(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [showCheckoutModal]);
+
   // Fetch products from Firestore
   const fetchProducts = async () => {
     setIsLoading(true);
     try {
-      // Dynamic cleanup: Delete any "opening-prayer" product if present in Firestore
-      try {
-        await deleteDoc(doc(db, 'marketplace', 'opening-prayer'));
-      } catch (cleanErr) {
-        console.log('Obsolete product cleanup:', cleanErr);
-      }
+      const [querySnapshot, settingsDoc] = await Promise.all([
+        getDocs(collection(db, 'marketplace')).catch((err) => {
+          handleFirestoreError(err, OperationType.GET, 'marketplace');
+          return null;
+        }),
+        getDoc(doc(db, 'settings', 'marketplace')).catch((err) => {
+          handleFirestoreError(err, OperationType.GET, 'settings/marketplace');
+          return null;
+        })
+      ]);
 
-      const querySnapshot = await getDocs(collection(db, 'marketplace'));
       const list: Product[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        const docId = doc.id.toLowerCase();
-        const titleLower = (data.title || '').toLowerCase();
-        
-        // Defensive filtering: Skip any product containing "opening prayer" or matching the ID
-        if (docId.includes('opening-prayer') || titleLower.includes('opening prayer')) {
-          return;
-        }
-        list.push({ id: doc.id, ...data } as Product);
-      });
+      if (querySnapshot) {
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const docId = doc.id.toLowerCase();
+          const titleLower = (data.title || '').toLowerCase();
+          
+          // Skip any product that is not a Progressive Web App (PWA) / App Access
+          // Since sermons/companions are free on the blog, they shouldn't be here with a price tag.
+          if (data.type !== 'App Access') {
+            return;
+          }
+
+          list.push({ id: doc.id, ...data } as Product);
+        });
+      }
       setProducts(list);
 
       // Fetch dynamic Flutterwave Pay link settings
-      const settingsDoc = await getDoc(doc(db, 'settings', 'marketplace'));
-      if (settingsDoc.exists() && settingsDoc.data().flutterwaveLink) {
+      if (settingsDoc && settingsDoc.exists() && settingsDoc.data().flutterwaveLink) {
         setGlobalFlutterwaveLink(settingsDoc.data().flutterwaveLink);
       }
     } catch (err) {
@@ -115,6 +148,7 @@ export default function MarketplaceSection({
   const handleBuyNowClick = (product: Product) => {
     setActiveProduct(product);
     setPaymentSuccess(false);
+    setSubmittedDirectPayDetails(false);
     setShowCheckoutModal(true);
   };
 
@@ -128,19 +162,23 @@ export default function MarketplaceSection({
 
     try {
       // Save sale record in Firestore
-      await addDoc(collection(db, 'sales'), {
-        productId: activeProduct.id,
-        productTitle: activeProduct.title,
-        price: activeProduct.price,
-        customerName: checkoutForm.name,
-        customerEmail: checkoutForm.email,
-        customerPhone: checkoutForm.phone || 'N/A',
-        txRef: reference,
-        flwId: 'DIRECT_PAY_LINK',
-        createdAt: new Date().toISOString()
-      });
+      try {
+        await addDoc(collection(db, 'sales'), {
+          productId: activeProduct.id,
+          productTitle: activeProduct.title,
+          price: activeProduct.price,
+          customerName: checkoutForm.name,
+          customerEmail: checkoutForm.email,
+          customerPhone: checkoutForm.phone || 'N/A',
+          txRef: reference,
+          flwId: 'DIRECT_PAY_LINK',
+          createdAt: new Date().toISOString()
+        });
+      } catch (dbErr) {
+        handleFirestoreError(dbErr, OperationType.CREATE, 'sales');
+      }
 
-      setPaymentSuccess(true);
+      setSubmittedDirectPayDetails(true);
     } catch (err) {
       console.error('Error logging direct link sale:', err);
       alert('Failed to process. Please check your internet connection.');
@@ -183,17 +221,21 @@ export default function MarketplaceSection({
           if (data.status === 'successful' || data.charge_response_code === '00') {
             // Save sale record in Firestore
             try {
-              await addDoc(collection(db, 'sales'), {
-                productId: activeProduct.id,
-                productTitle: activeProduct.title,
-                price: activeProduct.price,
-                customerName: checkoutForm.name,
-                customerEmail: checkoutForm.email,
-                customerPhone: checkoutForm.phone || 'N/A',
-                txRef: reference,
-                flwId: data.transaction_id || 'N/A',
-                createdAt: new Date().toISOString()
-              });
+              try {
+                await addDoc(collection(db, 'sales'), {
+                  productId: activeProduct.id,
+                  productTitle: activeProduct.title,
+                  price: activeProduct.price,
+                  customerName: checkoutForm.name,
+                  customerEmail: checkoutForm.email,
+                  customerPhone: checkoutForm.phone || 'N/A',
+                  txRef: reference,
+                  flwId: data.transaction_id || 'N/A',
+                  createdAt: new Date().toISOString()
+                });
+              } catch (dbErr) {
+                handleFirestoreError(dbErr, OperationType.CREATE, 'sales');
+              }
             } catch (err) {
               console.error('Error saving sale record:', err);
             }
@@ -224,7 +266,7 @@ export default function MarketplaceSection({
           Ministry Marketplace
         </h1>
         <p className="text-stone-500 text-sm mt-1">
-          Invest in your faith. Acquire digital books, audio teaching sessions, and annual devotionals written by Tersoo Terence Aker. Monitored securely via Flutterwave.
+          Get the official Opening Prayer for Bible Study Progressive Web Application (PWA) to install on your mobile or desktop device. Study scriptures, coordinate opening prayers, and structure home group bible study sessions completely offline.
         </p>
       </div>
 
@@ -273,6 +315,7 @@ export default function MarketplaceSection({
                   {product.type === 'eBook' && <BookOpen className="w-3 h-3" />}
                   {product.type === 'Audio Series' && <Headphones className="w-3 h-3" />}
                   {product.type === 'Devotional' && <Calendar className="w-3 h-3" />}
+                  {product.type === 'App Access' && <Globe className="w-3 h-3" />}
                   <span>{product.type}</span>
                 </div>
               </div>
@@ -295,7 +338,7 @@ export default function MarketplaceSection({
                         Cost Contribution
                       </span>
                       <strong className="text-xl text-amber-700 font-mono">
-                        ₦{product.price.toLocaleString()}
+                        {product.id === 'asooyeshua-pwa-app' ? `$7 (~₦${product.price.toLocaleString()})` : `₦${product.price.toLocaleString()}`}
                       </strong>
                     </div>
 
@@ -335,8 +378,8 @@ export default function MarketplaceSection({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => { if (!paymentSuccess) setShowCheckoutModal(false); }}
-              className="absolute inset-0 bg-stone-950/60 backdrop-blur-xs"
+              onClick={() => setShowCheckoutModal(false)}
+              className="absolute inset-0 bg-stone-950/60 backdrop-blur-xs cursor-pointer"
             />
 
             {/* Modal Body */}
@@ -354,18 +397,52 @@ export default function MarketplaceSection({
                     Securing Your Resource
                   </h3>
                 </div>
-                {!paymentSuccess && (
-                  <button
-                    onClick={() => setShowCheckoutModal(false)}
-                    className="text-stone-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowCheckoutModal(false)}
+                  className="text-stone-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
 
               {/* Form or Receipt Content */}
-              {!paymentSuccess ? (
+              {submittedDirectPayDetails ? (
+                <div className="p-6 text-center space-y-5">
+                  <div className="inline-flex w-12 h-12 bg-emerald-50 border border-emerald-200 rounded-full items-center justify-center text-emerald-600 shadow-xs mx-auto">
+                    <CheckCircle className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-serif text-lg text-stone-900 font-bold">
+                      Payment Details Logged
+                    </h3>
+                    <p className="text-stone-500 text-xs mt-1.5 leading-relaxed">
+                      Thank you! Since you selected the <strong>Official Pay Link</strong>, your transaction details have been submitted.
+                    </p>
+                    <div className="text-left text-stone-600 text-[11px] mt-4 bg-amber-50/55 border border-amber-200/40 p-4 rounded-xl space-y-2 leading-relaxed">
+                      <p>
+                        <strong>How manual verification works:</strong>
+                      </p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Our system logged your details with reference: <span className="font-mono font-bold">{txRef}</span>.</li>
+                        <li>Our admin team will cross-verify this name/email against our Flutterwave link deposits.</li>
+                        <li>Upon confirmation (typically in <strong>5 to 10 minutes</strong>), your premium PWA app direct link and custom access credentials will be sent to your email: <span className="font-bold text-amber-900">{checkoutForm.email}</span>.</li>
+                      </ol>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowCheckoutModal(false);
+                      setActiveProduct(null);
+                      setPaymentSuccess(false);
+                      setSubmittedDirectPayDetails(false);
+                      setCheckoutForm({ name: '', email: '', phone: '' });
+                    }}
+                    className="w-full bg-stone-900 hover:bg-stone-850 text-white py-2.5 rounded-xl font-bold text-xs tracking-widest uppercase transition-colors cursor-pointer"
+                  >
+                    Return to Bookstore
+                  </button>
+                </div>
+              ) : !paymentSuccess ? (
                 <div className="p-5 space-y-4">
                   {/* Brief product visual recap */}
                   <div className="bg-stone-50 border border-stone-150 rounded-xl p-3 flex gap-3 items-center">
@@ -572,7 +649,7 @@ export default function MarketplaceSection({
                       Gospel App Access Activated!
                     </h3>
                     <p className="text-stone-500 text-xs mt-1.5 max-w-xs mx-auto leading-relaxed">
-                      Thank you for your support of AsooYeshua Ministry. Your payment was verified and full PWA app access is unlocked!
+                      Thank you for your purchase! Your payment was verified and full access to the **Opening Prayer for Bible Study PWA** is unlocked!
                     </p>
                   </div>
 
@@ -694,7 +771,7 @@ export default function MarketplaceSection({
                               3
                             </span>
                             <p>
-                              Tap <span className="font-bold">"Add"</span> in the top-right corner to place the AsooYeshua launcher icon on your phone!
+                              Tap <span className="font-bold">"Add"</span> in the top-right corner to place the **Opening Prayer** launcher icon on your phone!
                             </p>
                           </div>
                         </div>
@@ -760,6 +837,18 @@ export default function MarketplaceSection({
                     </div>
                   </div>
 
+                  {/* Usage Guide specifically for the Opening Prayer */}
+                  <div className="bg-stone-50 border border-stone-150 rounded-xl p-4 text-left space-y-2 text-xs">
+                    <p className="font-bold text-stone-800 flex items-center gap-1">
+                      🙏 How to Use the Opening Prayer App:
+                    </p>
+                    <ul className="text-stone-600 space-y-1.5 list-disc list-inside">
+                      <li><strong>Instant Generation:</strong> Select your Bible study theme (e.g., Grace, Faith, Wisdom) and tap "Generate Prayer" to get a beautifully structured opening prayer instantly.</li>
+                      <li><strong>Offline Support:</strong> Pin/install the app on your device's home screen. The generator, templates, and scriptures work completely offline during your Bible study sessions.</li>
+                      <li><strong>Customization:</strong> Edit any generated prayer or scripture reference before sharing it with your study group or church congregation.</li>
+                    </ul>
+                  </div>
+
                   {/* Close & Continue Actions */}
                   <div className="pt-2">
                     <button
@@ -767,6 +856,7 @@ export default function MarketplaceSection({
                         setShowCheckoutModal(false);
                         setActiveProduct(null);
                         setPaymentSuccess(false);
+                        setSubmittedDirectPayDetails(false);
                         setCheckoutForm({ name: '', email: '', phone: '' });
                       }}
                       className="w-full bg-stone-900 hover:bg-stone-800 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase cursor-pointer transition-colors"

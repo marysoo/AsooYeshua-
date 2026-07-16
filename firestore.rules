@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for schema validation
+    function isValidSermon(data) {
+      return data.id is string
+        && data.title is string
+        && data.summary is string
+        && data.content is string;
+    }
+
+    function isValidProduct(data) {
+      return data.id is string
+        && data.title is string
+        && data.description is string
+        && (data.price is int || data.price is float || data.price is number);
+    }
+
+    function isValidBooking(data) {
+      return data.name is string
+        && data.whatsapp is string
+        && data.date is string
+        && data.time is string
+        && data.status is string;
+    }
+
+    function isValidSale(data) {
+      return data.productId is string
+        && data.productTitle is string
+        && data.customerName is string
+        && data.customerEmail is string;
+    }
+
+    // 1. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Sermons Collection
+    match /sermons/{sermonId} {
+      allow read: if true;
+      allow create, update: if isValidSermon(request.resource.data);
+      allow delete: if true;
+    }
+
+    // 3. Marketplace Collection
+    match /marketplace/{productId} {
+      allow read: if true;
+      allow create, update: if isValidProduct(request.resource.data);
+      allow delete: if true;
+    }
+
+    // 4. Bookings Collection
+    match /bookings/{bookingId} {
+      allow read: if true;
+      allow create, update: if isValidBooking(request.resource.data);
+      allow delete: if true;
+    }
+
+    // 5. Sales Collection
+    match /sales/{saleId} {
+      allow read: if true;
+      allow create, update: if isValidSale(request.resource.data);
+      allow delete: if true;
+    }
+
+    // 6. Settings Collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "sermon": {
+      "title": "Sermon",
+      "description": "A theological sermon, visual byte, or theological insights entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "readTime": { "type": "string" },
+        "date": { "type": "string" },
+        "author": { "type": "string" },
+        "clicks": { "type": "integer" },
+        "relatedMarketId": { "type": "string" }
+      },
+      "required": ["id", "title", "summary", "content", "category", "coverImage", "readTime", "date", "author"]
+    },
+    "product": {
+      "title": "Product",
+      "description": "A digital bookstore resource like an eBook, Devotional, or Audio Series.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "integer" },
+        "type": { "type": "string", "enum": ["eBook", "Audio Series", "Devotional", "App Access"] },
+        "downloadLink": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "relatedSermonId": { "type": "string" },
+        "purchases": { "type": "integer" }
+      },
+      "required": ["id", "title", "description", "price", "type", "downloadLink", "coverImage"]
+    },
+    "booking": {
+      "title": "Booking",
+      "description": "A scheduled prayer and consultation call booking.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "whatsapp", "date", "time", "status", "createdAt"]
+    },
+    "sale": {
+      "title": "Sale",
+      "description": "A verified sale or direct payment link sale transaction.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productTitle": { "type": "string" },
+        "price": { "type": "number" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "txRef": { "type": "string" },
+        "flwId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["productId", "productTitle", "price", "customerName", "customerEmail", "customerPhone", "txRef", "flwId", "createdAt"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Admin configuration and global settings.",
+      "type": "object",
+      "properties": {
+        "flutterwaveLink": { "type": "string" }
+      },
+      "required": ["flutterwaveLink"]
+    }
+  },
+  "firestore": {
+    "sermons": {
+      "schema": "sermon",
+      "description": "Sermon database collection"
+    },
+    "marketplace": {
+      "schema": "product",
+      "description": "Gospel bookstore resources"
+    },
+    "bookings": {
+      "schema": "booking",
+      "description": "Prayer and consultation call schedule requests"
+    },
+    "sales": {
+      "schema": "sale",
+      "description": "Purchased ebook or devotional sale records"
+    },
+    "settings": {
+      "schema": "settings",
+      "description": "Global config options"
+    }
+  }
+}

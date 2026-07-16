@@ -50,6 +50,30 @@ export default function App() {
     }
   }, []);
 
+  // Synchronize showInstallModal with window hash to handle browser Back button gracefully
+  useEffect(() => {
+    if (showInstallModal) {
+      if (window.location.hash !== '#guide') {
+        window.history.pushState({ modal: 'guide' }, '', '#guide');
+      }
+    } else {
+      if (window.location.hash === '#guide') {
+        window.history.back();
+      }
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (window.location.hash !== '#guide' && showInstallModal) {
+        setShowInstallModal(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [showInstallModal]);
+
   // Handle PWA installation event listening
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -83,11 +107,16 @@ export default function App() {
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User choice: ${outcome}`);
-    setDeferredPrompt(null);
-    setShowInstallBanner(false);
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await (deferredPrompt as any).userChoice;
+      console.log(`User choice: ${outcome}`);
+    } catch (err) {
+      console.error('Error triggering PWA prompt:', err);
+    } finally {
+      setDeferredPrompt(null);
+      setShowInstallBanner(false);
+    }
   };
 
   const handleDismissBanner = () => {
@@ -172,6 +201,15 @@ export default function App() {
                 {tab.label}
               </button>
             ))}
+            {/* Highly visible PWA button */}
+            <button
+              id="desktop-pwa-nav-btn"
+              onClick={() => setShowInstallModal(true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer text-amber-600 hover:text-amber-700 hover:bg-amber-55 flex items-center gap-1"
+            >
+              <Smartphone className="w-4 h-4 text-amber-600" />
+              <span>Opening Prayer PWA</span>
+            </button>
           </nav>
 
           {/* Social Icons & Fast Call CTA */}
@@ -230,18 +268,24 @@ export default function App() {
             { id: 'home', label: 'Home', icon: Flame },
             { id: 'blog', label: 'Sermons', icon: BookOpen },
             { id: 'marketplace', label: 'Market', icon: ShoppingBag },
+            { id: 'pwa', label: 'Prayer App', icon: Smartphone, action: () => setShowInstallModal(true) },
             { id: 'admin', label: 'Admin', icon: ShieldCheck }
           ].map((item) => {
             const Icon = item.icon;
+            const isSelected = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => {
-                  setActiveTab(item.id);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  if (item.action) {
+                    item.action();
+                  } else {
+                    setActiveTab(item.id);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
                 }}
                 className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${
-                  activeTab === item.id ? 'text-amber-400 scale-105' : 'text-stone-400 hover:text-stone-200'
+                  isSelected ? 'text-amber-400 scale-105' : 'text-stone-400 hover:text-stone-200'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -266,6 +310,31 @@ export default function App() {
             >
               {/* Sliding sermon carousel showcasing pictures of AsooYeshua */}
               <SermonSlider />
+
+              {/* Immersive PWA Call-to-Action Hero Banner */}
+              <section className="bg-gradient-to-r from-amber-500 to-amber-400 border border-amber-500/30 text-stone-950 p-6 sm:p-8 rounded-3xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full pointer-events-none" />
+                <div className="space-y-2 flex-1 text-center md:text-left">
+                  <div className="inline-flex items-center gap-1.5 bg-stone-900 text-amber-400 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md">
+                    <Smartphone className="w-3.5 h-3.5 text-amber-400" /> Bible Study Companion App (PWA)
+                  </div>
+                  <h3 className="font-serif text-xl sm:text-2xl font-bold tracking-wide">
+                    Opening Prayer for Bible Study App
+                  </h3>
+                  <p className="text-stone-900 text-xs sm:text-sm max-w-3xl leading-relaxed">
+                    Install the official Opening Prayer Progressive Web App (PWA) on your phone, tablet, or PC for just $7 (~₦10,500). Curate powerful templates, structure study guides, and organize scriptures entirely offline. Tap the button to view the guide or acquire full access in our Market.
+                  </p>
+                </div>
+                
+                <div className="flex flex-wrap gap-3 justify-center shrink-0">
+                  <button
+                    onClick={() => setShowInstallModal(true)}
+                    className="bg-stone-900 hover:bg-stone-850 text-amber-400 font-bold text-xs tracking-widest uppercase px-6 py-3.5 rounded-xl shadow-md cursor-pointer transition-colors flex items-center gap-1.5"
+                  >
+                    <Download className="w-4 h-4 animate-bounce" /> Setup Guide & Info
+                  </button>
+                </div>
+              </section>
 
               {/* Bento Grid: Ministry Mission Summary */}
               <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -513,145 +582,169 @@ export default function App() {
       </footer>
 
       {/* Floating PWA Install Banner */}
-      <AnimatePresence>
-        {showInstallBanner && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.95 }}
-            className="fixed bottom-6 left-6 right-6 sm:right-auto sm:left-6 z-50 max-w-sm bg-stone-900 text-white p-4 rounded-2xl border border-amber-500/40 shadow-2xl flex flex-col gap-3"
-          >
-            <div className="flex gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center shrink-0 text-stone-950 font-extrabold text-base shadow-sm">
-                AY
-              </div>
-              <div className="space-y-1">
-                <h4 className="font-serif text-sm font-bold text-amber-400">Install AsooYeshua App</h4>
-                <p className="text-stone-300 text-[11px] leading-snug">
-                  Add AsooYeshua Ministry to your home screen for instant access to sermon streams, digital bookstore, and counseling assistant!
-                </p>
-              </div>
+      {showInstallBanner && (
+        <div className="fixed bottom-6 left-6 right-6 sm:right-auto sm:left-6 z-50 max-w-sm bg-stone-900 text-white p-4 rounded-2xl border border-amber-500/40 shadow-2xl flex flex-col gap-3 transition-all duration-300 animate-in fade-in slide-in-from-bottom-5">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center shrink-0 text-stone-950 font-extrabold text-base shadow-sm">
+              OP
             </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={handleDismissBanner}
-                className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-stone-400 hover:text-white uppercase tracking-wider transition-colors cursor-pointer"
-              >
-                Later
-              </button>
-              <button
-                onClick={handleInstallClick}
-                className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[10px] px-3.5 py-1.5 rounded-lg uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
-              >
-                Install Now
-              </button>
+            <div className="space-y-1">
+              <h4 className="font-serif text-sm font-bold text-amber-400">Install Opening Prayer App</h4>
+              <p className="text-stone-300 text-[11px] leading-snug">
+                Add the official Opening Prayer for Bible Study app to your home screen for instant study structures, templates, and zero-data offline reading!
+              </p>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={handleDismissBanner}
+              className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-stone-400 hover:text-white uppercase tracking-wider transition-colors cursor-pointer"
+            >
+              Later
+            </button>
+            <button
+              onClick={handleInstallClick}
+              className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[10px] px-3.5 py-1.5 rounded-lg uppercase tracking-wider transition-colors shadow-xs cursor-pointer"
+            >
+              Install Now
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* PWA Install Guide Modal (Universal for iOS & Android) */}
-      <AnimatePresence>
-        {showInstallModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white border border-stone-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative"
-            >
+      {showInstallModal && (
+        <div 
+          onClick={() => setShowInstallModal(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs transition-all duration-300 animate-in fade-in cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-stone-200 rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl relative transition-all duration-300 animate-in zoom-in-95 cursor-default"
+          >
+            {/* Sticky Header inside modal */}
+            <div className="p-4 border-b border-stone-100 flex justify-between items-center bg-stone-50/50">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">PWA GUIDE</span>
               <button
                 onClick={() => setShowInstallModal(false)}
-                className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 bg-stone-50 hover:bg-stone-100 p-1.5 rounded-full transition-colors cursor-pointer"
+                className="text-stone-400 hover:text-stone-600 bg-white hover:bg-stone-100 p-1.5 rounded-full border border-stone-200 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
 
-              <div className="p-6 sm:p-8 space-y-6">
-                <div className="text-center space-y-2">
-                  <div className="w-16 h-16 rounded-2xl bg-amber-500 text-white font-extrabold text-2xl flex items-center justify-center mx-auto shadow-md border-2 border-white">
-                    AY
-                  </div>
-                  <h3 className="font-serif text-xl font-bold text-stone-900 pt-2">
-                    AsooYeshua Ministry App
-                  </h3>
-                  <p className="text-stone-500 text-xs">
-                    Progressive Web App (PWA) installation guide
+            {/* Scrollable Content wrapper */}
+            <div className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1">
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500 text-white font-extrabold text-xl flex items-center justify-center mx-auto shadow-md border-2 border-white">
+                  🙏
+                </div>
+                <h3 className="font-serif text-lg font-bold text-stone-900 pt-2">
+                  Opening Prayer for Bible Study App
+                </h3>
+                <p className="text-stone-500 text-xs">
+                  PWA Installation & Usage Guide ($7 Value)
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-amber-50/50 border border-amber-200/50 p-4 rounded-2xl space-y-2">
+                  <p className="text-xs font-bold text-amber-800 flex items-center gap-1">
+                    📖 How to Access and Use the App:
                   </p>
+                  <ul className="text-stone-700 text-[11px] space-y-2 list-none">
+                    <li className="flex items-start gap-1">
+                      <span>✨</span>
+                      <span><strong>Step 1:</strong> Acquire full access to the Opening Prayer PWA under our <strong>Market</strong> tab for $7 (~₦10,500) to receive your official installer link and access credentials.</span>
+                    </li>
+                    <li className="flex items-start gap-1">
+                      <span>✨</span>
+                      <span><strong>Step 2:</strong> Once purchased, open the dedicated link on your device browser (Android, iOS Safari, or PC browser).</span>
+                    </li>
+                    <li className="flex items-start gap-1">
+                      <span>✨</span>
+                      <span><strong>Step 3:</strong> Tap <strong>"Install to Home Screen"</strong> inside the application to pin it as a native utility.</span>
+                    </li>
+                    <li className="flex items-start gap-1">
+                      <span>✨</span>
+                      <span><strong>Step 4:</strong> Works 100% offline — use the Prayer Generator and Study guides during sessions even with zero network signal!</span>
+                    </li>
+                  </ul>
                 </div>
 
-                <div className="space-y-4">
-                  {/* Option A: Direct prompt installation (Android/Chrome/Edge) */}
-                  {deferredPrompt ? (
-                    <div className="bg-amber-50/70 border border-amber-200/60 p-4 rounded-2xl space-y-3">
-                      <p className="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
-                        <Smartphone className="w-4 h-4 text-amber-600" /> One-Click Install
-                      </p>
-                      <p className="text-stone-600 text-[11px] leading-relaxed">
-                        Your browser fully supports instant installation. Tap the button below to add AsooYeshua straight to your home screen!
-                      </p>
-                      <button
-                        onClick={handleInstallClick}
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
-                      >
-                        <Download className="w-4 h-4" /> Install AsooYeshua App
-                      </button>
-                    </div>
-                  ) : isIOS ? (
-                    /* Option B: iOS iPhone/iPad specific instructions */
-                    <div className="bg-amber-50/70 border border-amber-200/60 p-4 rounded-2xl space-y-3">
-                      <p className="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
-                        <Smartphone className="w-4 h-4 text-amber-600" /> Apple iOS Setup Guide
-                      </p>
-                      <p className="text-stone-600 text-[11px] leading-relaxed">
-                        Safari does not support one-click web installs, but you can add it easily manually:
-                      </p>
-                      <ol className="text-stone-600 text-[11px] space-y-2 list-decimal list-inside pl-1">
-                        <li>Open this link inside the <strong>Safari browser</strong>.</li>
-                        <li>Tap the <strong>Share</strong> button (the box with an arrow pointing up icon at the bottom screen).</li>
-                        <li>Scroll down and select <strong>"Add to Home Screen"</strong>.</li>
-                        <li>Tap <strong>"Add"</strong> in the top-right corner to complete.</li>
-                      </ol>
-                    </div>
-                  ) : (
-                    /* Option C: Desktop/Generic manual setup instruction */
-                    <div className="bg-stone-50 border border-stone-200 p-4 rounded-2xl space-y-3">
-                      <p className="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
-                        <Smartphone className="w-4 h-4 text-stone-600" /> Web App Installation
-                      </p>
-                      <p className="text-stone-600 text-[11px] leading-relaxed">
-                        Add this site to your desktop or mobile home screen as a standalone app:
-                      </p>
-                      <ul className="text-stone-600 text-[11px] space-y-2 list-disc list-inside pl-1">
-                        <li><strong>On Chrome/Edge:</strong> Look for the <strong>App Install icon</strong> in the address bar (top right, looks like a monitor with an arrow, or tap menu ⫶ and select "Install").</li>
-                        <li><strong>On Mobile browsers:</strong> Open the browser menu (three dots ⫶) and choose <strong>"Add to Home screen"</strong> or <strong>"Install App"</strong>.</li>
-                      </ul>
-                    </div>
-                  )}
-
-                  <div className="bg-stone-50 border border-stone-150 p-4 rounded-2xl">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
-                      Why install as a Web App?
+                {/* Option A: Direct prompt installation (Android/Chrome/Edge) */}
+                {deferredPrompt ? (
+                  <div className="bg-amber-50/70 border border-amber-200/60 p-4 rounded-2xl space-y-3">
+                    <p className="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 text-amber-600" /> One-Click Install (Demo Portal)
                     </p>
-                    <ul className="text-stone-500 text-[11px] space-y-1 list-none">
-                      <li>⚡ Launches instantly from your native home screen launcher</li>
-                      <li>📵 Works even with weak or offline network connections</li>
-                      <li>✨ Full screen immersive experience without browser URL bars</li>
+                    <p className="text-stone-600 text-[11px] leading-relaxed">
+                      Your browser fully supports instant installation. Tap below to pin the demo portal to your home screen!
+                    </p>
+                    <button
+                      onClick={handleInstallClick}
+                      className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Download className="w-4 h-4" /> Install Application
+                    </button>
+                  </div>
+                ) : isIOS ? (
+                  /* Option B: iOS iPhone/iPad specific instructions */
+                  <div className="bg-amber-50/70 border border-amber-200/60 p-4 rounded-2xl space-y-3">
+                    <p className="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 text-amber-600" /> Apple iOS Setup Guide
+                    </p>
+                    <p className="text-stone-600 text-[11px] leading-relaxed">
+                      Safari does not support one-click web installs, but you can add it manually after purchasing:
+                    </p>
+                    <ol className="text-stone-600 text-[11px] space-y-2 list-decimal list-inside pl-1">
+                      <li>Open your purchased premium link inside the <strong>Safari browser</strong>.</li>
+                      <li>Tap the <strong>Share</strong> button (the box with an arrow pointing up icon at the bottom screen).</li>
+                      <li>Scroll down and select <strong>"Add to Home Screen"</strong>.</li>
+                      <li>Tap <strong>"Add"</strong> in the top-right corner to complete.</li>
+                    </ol>
+                  </div>
+                ) : (
+                  /* Option C: Desktop/Generic manual setup instruction */
+                  <div className="bg-stone-50 border border-stone-200 p-4 rounded-2xl space-y-3">
+                    <p className="text-xs font-semibold text-stone-800 flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 text-stone-600" /> Web App Installation
+                    </p>
+                    <p className="text-stone-600 text-[11px] leading-relaxed">
+                      Add the application to your desktop or mobile home screen as a standalone app after purchase:
+                    </p>
+                    <ul className="text-stone-600 text-[11px] space-y-2 list-disc list-inside pl-1">
+                      <li><strong>On Chrome/Edge:</strong> Access your premium web link, look for the <strong>App Install icon</strong> in the address bar (top right), or tap menu ⫶ and select "Install".</li>
+                      <li><strong>On Mobile browsers:</strong> Open your premium web link, expand the browser menu (three dots ⫶) and choose <strong>"Add to Home screen"</strong> or <strong>"Install App"</strong>.</li>
                     </ul>
                   </div>
-                </div>
+                )}
 
-                <button
-                  onClick={() => setShowInstallModal(false)}
-                  className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Close Guide
-                </button>
+                <div className="bg-stone-50 border border-stone-150 p-4 rounded-2xl">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1">
+                    Why install as a Web App?
+                  </p>
+                  <ul className="text-stone-500 text-[11px] space-y-1 list-none">
+                    <li>⚡ Launches instantly from your native home screen launcher</li>
+                    <li>📵 Works even with weak or offline network connections</li>
+                    <li>✨ Full screen immersive experience without browser URL bars</li>
+                  </ul>
+                </div>
               </div>
-            </motion.div>
+            </div>
+
+            {/* Sticky Footer inside modal */}
+            <div className="p-4 border-t border-stone-100 bg-stone-50/50">
+              <button
+                onClick={() => setShowInstallModal(false)}
+                className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold py-3 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Close Guide
+              </button>
+            </div>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }

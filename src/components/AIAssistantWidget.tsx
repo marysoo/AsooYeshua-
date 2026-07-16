@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Calendar, Phone, CheckCircle, Flame, MessageCircle, Clock, Info } from 'lucide-react';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { ChatMessage } from '../types';
 
 interface AIAssistantWidgetProps {
@@ -120,15 +120,20 @@ export default function AIAssistantWidget({ onSelectTab }: AIAssistantWidgetProp
     setIsLoading(true);
     try {
       // Save booking in Firestore
-      const docRef = await addDoc(collection(db, 'bookings'), {
-        name: bookingForm.name,
-        whatsapp: bookingForm.whatsapp,
-        date: bookingForm.date,
-        time: bookingForm.time,
-        message: bookingForm.message,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      });
+      let docRef;
+      try {
+        docRef = await addDoc(collection(db, 'bookings'), {
+          name: bookingForm.name,
+          whatsapp: bookingForm.whatsapp,
+          date: bookingForm.date,
+          time: bookingForm.time,
+          message: bookingForm.message,
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        });
+      } catch (dbErr) {
+        handleFirestoreError(dbErr, OperationType.CREATE, 'bookings');
+      }
 
       setBookingId(docRef.id);
       setBookingSuccess(true);

@@ -17,7 +17,7 @@ export interface Product {
   title: string;
   description: string;
   price: number; // in NGN
-  type: 'eBook' | 'Audio Series' | 'Devotional';
+  type: 'eBook' | 'Audio Series' | 'Devotional' | 'App Access';
   downloadLink: string;
   coverImage: string;
   relatedSermonId?: string;

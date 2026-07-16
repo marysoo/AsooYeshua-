@@ -18,7 +18,9 @@ export default function SplashVideoIntro({ onComplete }: SplashVideoIntroProps) 
     // Check if user has already seen the intro in this session
     const hasSeenIntro = sessionStorage.getItem('asooyeshua_intro_seen');
     if (hasSeenIntro === 'true') {
-      onComplete();
+      setTimeout(() => {
+        onComplete();
+      }, 50);
       return;
     }
 

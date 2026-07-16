@@ -1,27 +1,22 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, setDoc, doc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, query, limit, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || undefined);
 export const auth = getAuth(app);
 
 // Helper to seed Firestore if empty
-export async function seedDatabaseIfEmpty() {
+export async function seedDatabase() {
   try {
-    const sermonsRef = collection(db, 'sermons');
-    const sermonsSnap = await getDocs(sermonsRef);
-    
-    if (sermonsSnap.empty) {
-      console.log('Seeding initial sermons to Firestore...');
-      const initialSermons = [
-        {
-          id: 'power-of-the-cross',
-          title: 'The Power of the Cross: Restoring Our Relationship with God',
-          summary: 'A deep examination of the divine transaction on Calvary, exploring grace, justification, and the ultimate restoration of humanity through Jesus Christ.',
-          content: `### Introduction: The Central Pivot of History
+    const initialSermons = [
+      {
+        id: 'power-of-the-cross',
+        title: 'The Power of the Cross: Restoring Our Relationship with God',
+        summary: 'A deep examination of the divine transaction on Calvary, exploring grace, justification, and the ultimate restoration of humanity through Jesus Christ.',
+        content: `### Introduction: The Central Pivot of History
 The cross of Jesus Christ is not merely a historical event; it is the central pivot of all human history and eternity. Through it, the holy justice of God and His infinite love met in a perfect, divine transaction. In this sermon, we explore how the cross of Christ restores our broken relationship with God.
 
 ### 1. The Reality of the Chasm
@@ -46,19 +41,19 @@ We are invited to:
 If you have been wandering in separation, know that the bridge has been built. The cross still stands, and Jesus is calling. Accept His free gift of grace today and be restored.
 
 *Chaired by Tersoo Terence Aker (AsooYeshua)*`,
-          category: 'Grace & Salvation',
-          coverImage: '/src/assets/images/asooyeshua_ministry_1_1784026970487.jpg',
-          readTime: '5 min read',
-          date: 'July 12, 2026',
-          author: 'AsooYeshua',
-          clicks: 24,
-          relatedMarketId: 'foundations-of-faith'
-        },
-        {
-          id: 'walking-by-faith',
-          title: 'Walking by Faith and Not by Sight in a Modern World',
-          summary: 'Discover how to anchor your soul in the unshakeable promises of God when surrounded by a culture of uncertainty and material distractions.',
-          content: `### Understanding Biblical Faith
+        category: 'Grace & Salvation',
+        coverImage: '/src/assets/images/cross_on_hill_1784165487177.jpg',
+        readTime: '5 min read',
+        date: 'July 12, 2026',
+        author: 'AsooYeshua',
+        clicks: 24,
+        relatedMarketId: 'foundations-of-faith'
+      },
+      {
+        id: 'walking-by-faith',
+        title: 'Walking by Faith and Not by Sight in a Modern World',
+        summary: 'Discover how to anchor your soul in the unshakeable promises of God when surrounded by a culture of uncertainty and material distractions.',
+        content: `### Understanding Biblical Faith
 In a world governed by what we can see, touch, and measure, walking by faith is a revolutionary act. In *2 Corinthians 5:7*, the Apostle Paul writes, "For we walk by faith, not by sight."
 
 ### 1. The Deception of Sight
@@ -80,19 +75,19 @@ How do we walk this out in our modern, busy lives?
 
 ### A Message from AsooYeshua
 Let us hold fast to our confession. Let us walk boldly, knowing that He who promised is faithful. Keep your faith active, and promote the gospel everywhere you go.`,
-          category: 'Faith & Walking',
-          coverImage: '/src/assets/images/asooyeshua_portrait_2_1784026952199.jpg',
-          readTime: '7 min read',
-          date: 'July 10, 2026',
-          author: 'AsooYeshua',
-          clicks: 18,
-          relatedMarketId: 'daily-grace-devotional'
-        },
-        {
-          id: 'understanding-prophetic-call',
-          title: 'Understanding the Call: Promoting the Gospel Everywhere',
-          summary: 'Tersoo Terence Aker (AsooYeshua) shares his personal testimony, ministry mission, and a clarion call for every believer to actively participate in the Great Commission.',
-          content: `### The Call to the Harvest
+        category: 'Faith & Walking',
+        coverImage: '/src/assets/images/faith_path_1784165500493.jpg',
+        readTime: '7 min read',
+        date: 'July 10, 2026',
+        author: 'AsooYeshua',
+        clicks: 18,
+        relatedMarketId: 'daily-grace-devotional'
+      },
+      {
+        id: 'understanding-prophetic-call',
+        title: 'Understanding the Call: Promoting the Gospel Everywhere',
+        summary: 'Tersoo Terence Aker (AsooYeshua) shares his personal testimony, ministry mission, and a clarion call for every believer to actively participate in the Great Commission.',
+        content: `### The Call to the Harvest
 The harvest is truly plentiful, but the laborers are few. In this message, I share the core mission of AsooYeshua Ministry: to aggressively promote the unadulterated gospel of Jesus Christ.
 
 ### 1. My Testimony: From Seeking to Found
@@ -105,73 +100,138 @@ In *Matthew 28:19-20*, Jesus did not give a recommendation; He gave a command: "
 
 ### 3. How You Can Partner with Us
 You are not a passive spectator in God's plan. You are called to:
-1. **Preach the Gospel**: In your family, workplace, and social media (TikTok, Facebook, YouTube @AsooYeshua).
+1. **Preach the Gospel**: In your family, workplace, and social media (TikTok, Facebook, YouTube @asooyeshua).
 2. **Support Spiritual Materials**: Acquire gospel books and audio recordings to equip yourself.
 3. **Pray for the Harvest**: Pray for doors of utterance to be opened for us as we take this message worldwide.
 
 ### Closing Prayer
 Father, ignite a fire in our hearts for the lost. Let us run with the vision of AsooYeshua, promoting Christ until He returns. Amen.`,
-          category: 'Gospel Ministry',
-          coverImage: '/src/assets/images/asooyeshua_portrait_1_1784026936123.jpg',
-          readTime: '8 min read',
-          date: 'July 08, 2026',
-          author: 'AsooYeshua',
-          clicks: 35,
-          relatedMarketId: 'sermons-of-grace-audio'
-        }
-      ];
-
-      for (const sermon of initialSermons) {
-        await setDoc(doc(db, 'sermons', sermon.id), sermon);
+        category: 'Gospel Ministry',
+        coverImage: '/src/assets/images/open_bible_1784165511489.jpg',
+        readTime: '8 min read',
+        date: 'July 08, 2026',
+        author: 'AsooYeshua',
+        clicks: 35,
+        relatedMarketId: 'sermons-of-grace-audio'
       }
+    ];
+
+    for (const sermon of initialSermons) {
+      await setDoc(doc(db, 'sermons', sermon.id), sermon);
     }
 
-    const marketRef = collection(db, 'marketplace');
-    const marketSnap = await getDocs(marketRef);
-
-    if (marketSnap.empty) {
-      console.log('Seeding initial marketplace items to Firestore...');
-      const initialProducts = [
-        {
-          id: 'foundations-of-faith',
-          title: 'The Foundations of Faith: Gospel Guidebook',
-          description: 'An inspiring digital eBook detailing the foundational truths of the gospel of Jesus Christ, written by Tersoo Terence Aker. Equips you to understand and share the word of God effectively.',
-          price: 2500, // NGN
-          type: 'eBook',
-          downloadLink: 'https://asooyeshua.org/ebooks/foundations-of-faith.pdf',
-          coverImage: '/src/assets/images/asooyeshua_ministry_1_1784026970487.jpg',
-          relatedSermonId: 'power-of-the-cross',
-          purchases: 12
-        },
-        {
-          id: 'sermons-of-grace-audio',
-          title: 'Promoting the Gospel: Sermons of Grace (Audio Series)',
-          description: 'A premium, high-quality audio collection of 5 powerful MP3 sermon recordings on Grace, Salvation, and Faith preached live by AsooYeshua (Tersoo Terence Aker).',
-          price: 4500, // NGN
-          type: 'Audio Series',
-          downloadLink: 'https://asooyeshua.org/audio/sermons-of-grace.zip',
-          coverImage: '/src/assets/images/asooyeshua_portrait_1_1784026936123.jpg',
-          relatedSermonId: 'understanding-prophetic-call',
-          purchases: 8
-        },
-        {
-          id: 'daily-grace-devotional',
-          title: 'Daily Grace: 365 Devotional Calendar',
-          description: 'A beautiful annual digital devotional booklet featuring daily scriptures, prayers, and deep theological reflections by AsooYeshua to fuel your morning quiet time.',
-          price: 3000, // NGN
-          type: 'Devotional',
-          downloadLink: 'https://asooyeshua.org/ebooks/daily-grace.pdf',
-          coverImage: '/src/assets/images/asooyeshua_portrait_2_1784026952199.jpg',
-          relatedSermonId: 'walking-by-faith',
-          purchases: 15
+    // Actively delete ALL other products from the marketplace collection except our PWA app
+    try {
+      const marketRef = collection(db, 'marketplace');
+      const marketSnap = await getDocs(marketRef);
+      for (const mDoc of marketSnap.docs) {
+        if (mDoc.id !== 'asooyeshua-pwa-app') {
+          console.log('Deleting obsolete marketplace item:', mDoc.id);
+          await deleteDoc(doc(db, 'marketplace', mDoc.id));
         }
-      ];
+      }
+    } catch (err) {
+      console.error('Error fetching/clearing obsolete marketplace items:', err);
+    }
 
-      for (const product of initialProducts) {
-        await setDoc(doc(db, 'marketplace', product.id), product);
+    // Seed/Ensure the PWA product is in the collection
+    const pwaProduct = {
+      id: 'asooyeshua-pwa-app',
+      title: 'Opening Prayer for Bible Study (PWA)',
+      description: 'Get the official Opening Prayer Progressive Web App (PWA) designed specifically for Bible studies. This premium interactive application helps you coordinate powerful opening prayers, provides deep spiritual templates, features curated scripture studies, works completely offline, and can be installed instantly on any Android, iOS, or PC device.',
+      price: 10500, // NGN (Equivalent to $7 USD)
+      type: 'App Access' as const,
+      downloadLink: 'https://openingprayer.earningfunnel.workers.dev/',
+      coverImage: '/src/assets/images/pwa_icon_logo_1784153999958.jpg',
+      relatedSermonId: '',
+      purchases: 47
+    };
+    await setDoc(doc(db, 'marketplace', pwaProduct.id), pwaProduct);
+  } catch (error) {
+    console.error('Error seeding Firestore database:', error);
+    handleFirestoreError(error, OperationType.WRITE, 'sermons');
+  }
+}
+
+export async function seedDatabaseIfEmpty() {
+  try {
+    const sermonsRef = collection(db, 'sermons');
+    const sermonsSnap = await getDocs(query(sermonsRef, limit(1)));
+    if (sermonsSnap.empty) {
+      console.log('Seeding initial sermons to Firestore...');
+      await seedDatabase();
+    } else {
+      // Just check if the PWA product is present; if it's already there we do absolutely nothing.
+      // This saves API read/write quota and boots the application instantly.
+      const pwaDocRef = doc(db, 'marketplace', 'asooyeshua-pwa-app');
+      const pwaDocSnap = await getDoc(pwaDocRef);
+      const needsUpdate = !pwaDocSnap.exists() || pwaDocSnap.data()?.price !== 10500 || !pwaDocSnap.data()?.title?.includes('Opening Prayer');
+      
+      if (needsUpdate) {
+        console.log('Seeding or updating PWA product to Opening Prayer for Bible Study...');
+        const pwaProduct = {
+          id: 'asooyeshua-pwa-app',
+          title: 'Opening Prayer for Bible Study (PWA)',
+          description: 'Get the official Opening Prayer Progressive Web App (PWA) designed specifically for Bible studies. This premium interactive application helps you coordinate powerful opening prayers, provides deep spiritual templates, features curated scripture studies, works completely offline, and can be installed instantly on any Android, iOS, or PC device.',
+          price: 10500, // NGN (Equivalent to $7 USD)
+          type: 'App Access' as const,
+          downloadLink: 'https://openingprayer.earningfunnel.workers.dev/',
+          coverImage: '/src/assets/images/pwa_icon_logo_1784153999958.jpg',
+          relatedSermonId: '',
+          purchases: 47
+        };
+        await setDoc(pwaDocRef, pwaProduct);
       }
     }
   } catch (error) {
-    console.error('Error seeding Firestore database:', error);
+    console.error('Error in seedDatabaseIfEmpty:', error);
   }
 }
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: auth.currentUser?.emailVerified || null,
+      isAnonymous: auth.currentUser?.isAnonymous || null,
+      tenantId: auth.currentUser?.tenantId || null,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+

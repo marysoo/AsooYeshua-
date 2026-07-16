@@ -1,14 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Calendar, User, Clock, BookOpen, ChevronRight, ArrowLeft, Plus, Lock, Key, Eye, HelpCircle, AlertCircle, ShoppingCart } from 'lucide-react';
+import { Search, Calendar, User, Clock, BookOpen, ChevronRight, ArrowLeft, Plus, Lock, Key, Eye, HelpCircle, AlertCircle, ShoppingCart, Download, Headphones, FileText } from 'lucide-react';
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Sermon, Product } from '../types';
 import Markdown from 'react-markdown';
 
 interface BlogSectionProps {
   onSelectProduct: (productId: string) => void;
 }
+
+const FREE_RESOURCES = [
+  {
+    id: 'foundations-of-faith',
+    title: 'The Foundations of Faith: Gospel Guidebook',
+    description: 'An inspiring digital eBook detailing the foundational truths of the gospel of Jesus Christ, written by Tersoo Terence Aker. Equips you to understand and share the word of God effectively.',
+    type: 'eBook',
+    downloadLink: 'https://asooyeshua.org/ebooks/foundations-of-faith.pdf',
+    coverImage: '/src/assets/images/cross_on_hill_1784165487177.jpg',
+    fileSize: '2.4 MB'
+  },
+  {
+    id: 'daily-grace-devotional',
+    title: 'Daily Grace: 365 Devotional Calendar',
+    description: 'A beautiful annual digital devotional booklet featuring daily scriptures, prayers, and deep theological reflections by AsooYeshua to fuel your morning quiet time.',
+    type: 'Devotional',
+    downloadLink: 'https://asooyeshua.org/ebooks/daily-grace.pdf',
+    coverImage: '/src/assets/images/faith_path_1784165500493.jpg',
+    fileSize: '4.1 MB'
+  },
+  {
+    id: 'sermons-of-grace-audio',
+    title: 'Promoting the Gospel: Sermons of Grace (Audio Series)',
+    description: 'A premium, high-quality audio collection of 5 powerful MP3 sermon recordings on Grace, Salvation, and Faith preached live by AsooYeshua (Tersoo Terence Aker).',
+    type: 'Audio Series',
+    downloadLink: 'https://asooyeshua.org/audio/sermons-of-grace.zip',
+    coverImage: '/src/assets/images/open_bible_1784165511489.jpg',
+    fileSize: '45 MB'
+  }
+];
 
 const CATEGORIES = ['All', 'Grace & Salvation', 'Faith & Walking', 'Gospel Ministry'];
 
@@ -41,7 +71,12 @@ export default function BlogSection({ onSelectProduct }: BlogSectionProps) {
   const fetchSermons = async () => {
     setIsLoading(true);
     try {
-      const querySnapshot = await getDocs(collection(db, 'sermons'));
+      let querySnapshot;
+      try {
+        querySnapshot = await getDocs(collection(db, 'sermons'));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, 'sermons');
+      }
       const list: Sermon[] = [];
       querySnapshot.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() } as Sermon);
@@ -59,6 +94,30 @@ export default function BlogSection({ onSelectProduct }: BlogSectionProps) {
   useEffect(() => {
     fetchSermons();
   }, []);
+
+  // Synchronize selectedSermon with window hash to handle browser Back button gracefully
+  useEffect(() => {
+    if (selectedSermon) {
+      if (window.location.hash !== '#sermon') {
+        window.history.pushState({ view: 'sermon' }, '', '#sermon');
+      }
+    } else {
+      if (window.location.hash === '#sermon') {
+        window.history.back();
+      }
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (window.location.hash !== '#sermon' && selectedSermon) {
+        setSelectedSermon(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [selectedSermon]);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +158,11 @@ export default function BlogSection({ onSelectProduct }: BlogSectionProps) {
         relatedMarketId: newSermon.relatedMarketId || null
       };
 
-      await addDoc(collection(db, 'sermons'), payload);
+      try {
+        await addDoc(collection(db, 'sermons'), payload);
+      } catch (dbErr) {
+        handleFirestoreError(dbErr, OperationType.CREATE, 'sermons');
+      }
       
       // Reset form and refresh
       setShowAddForm(false);
@@ -126,10 +189,19 @@ export default function BlogSection({ onSelectProduct }: BlogSectionProps) {
     try {
       // In firestore, we seeded with exact IDs as doc references, but addDoc creates auto-generated IDs.
       // We will look for docs with the target id
-      const querySnapshot = await getDocs(collection(db, 'sermons'));
+      let querySnapshot;
+      try {
+        querySnapshot = await getDocs(collection(db, 'sermons'));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, 'sermons');
+      }
       querySnapshot.forEach(async (document) => {
         if (document.data().id === id) {
-          await deleteDoc(doc(db, 'sermons', document.id));
+          try {
+            await deleteDoc(doc(db, 'sermons', document.id));
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, `sermons/${document.id}`);
+          }
         }
       });
       await fetchSermons();
@@ -384,6 +456,63 @@ export default function BlogSection({ onSelectProduct }: BlogSectionProps) {
               </motion.form>
             )}
 
+            {/* Free Ministry Resources Panel */}
+            <div className="bg-stone-50 border border-stone-150 rounded-3xl p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 bg-amber-50 border border-amber-200/50 px-2.5 py-1 rounded-md">
+                    🎁 Free Resources
+                  </span>
+                  <h2 className="font-serif text-xl sm:text-2xl text-stone-900 font-bold mt-2.5">
+                    Free Spiritual Library & Companion Guides
+                  </h2>
+                  <p className="text-stone-500 text-xs sm:text-sm mt-1">
+                    Equip your spiritual walk. We have removed all prices on our sound theological books and audio collections to make them completely free.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {FREE_RESOURCES.map((resource) => (
+                  <div key={resource.id} className="bg-white border border-stone-150 rounded-2xl overflow-hidden hover:shadow-lg transition-all flex flex-col justify-between group">
+                    <div>
+                      <div className="h-40 w-full overflow-hidden relative">
+                        <img
+                          src={resource.coverImage}
+                          alt={resource.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300"
+                        />
+                        <div className="absolute top-3 left-3 bg-stone-900/80 backdrop-blur-md px-2.5 py-1 rounded-md text-[10px] font-bold text-amber-400 uppercase tracking-widest border border-white/10">
+                          {resource.type}
+                        </div>
+                      </div>
+                      <div className="p-4 space-y-2">
+                        <h3 className="font-serif text-sm font-bold text-stone-900 line-clamp-1 group-hover:text-amber-700 transition-colors">
+                          {resource.title}
+                        </h3>
+                        <p className="text-stone-500 text-[11px] line-clamp-2 leading-relaxed">
+                          {resource.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-4 pt-0">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-stone-400 mb-3 border-t border-stone-50 pt-3">
+                        <span>Size: {resource.fileSize}</span>
+                        <span>Format: {resource.type === 'Audio Series' ? 'ZIP (MP3)' : 'PDF'}</span>
+                      </div>
+                      <button
+                        onClick={() => window.open(resource.downloadLink, '_blank')}
+                        className="w-full bg-stone-900 hover:bg-stone-850 text-white font-bold text-[11px] tracking-widest uppercase py-2.5 rounded-xl cursor-pointer shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download Free
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Filter controls */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch">
               {/* Categories */}
@@ -573,36 +702,43 @@ export default function BlogSection({ onSelectProduct }: BlogSectionProps) {
               <Markdown>{selectedSermon.content}</Markdown>
             </div>
 
-            {/* MONETIZATION BRIDGE: Recommendation Widget */}
+            {/* FREE COMPANION STUDY RESOURCE BRIDGE */}
             {selectedSermon.relatedMarketId && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-radial-[circle_at_bottom_left,rgba(217,119,6,0.06)_0%,rgba(255,255,255,1)_100%] border border-amber-500/20 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row gap-6 items-center justify-between shadow-lg mt-12"
-              >
-                <div className="space-y-2 text-center sm:text-left">
-                  <div className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-amber-700">
-                    <ShoppingCart className="w-3.5 h-3.5 text-amber-600" /> Marketplace Recommendation
-                  </div>
-                  <h3 className="font-serif text-lg sm:text-xl text-stone-900 font-semibold leading-snug">
-                    Equip Your Spiritual Walk with Related Material!
-                  </h3>
-                  <p className="text-stone-500 text-xs sm:text-sm max-w-xl">
-                    Get the companion eBook/Audio recorded by Tersoo Terence Aker to study this subject deeper, available on our secure Marketplace.
-                  </p>
-                </div>
+              (() => {
+                const companion = FREE_RESOURCES.find(r => r.id === selectedSermon.relatedMarketId);
+                if (!companion) return null;
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-stone-50 border border-stone-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row gap-6 items-center justify-between shadow-md mt-12"
+                  >
+                    <div className="space-y-2 text-center sm:text-left">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-amber-750">
+                        <Download className="w-3.5 h-3.5 text-amber-600" /> Free Spiritual Companion Study
+                      </div>
+                      <h3 className="font-serif text-lg sm:text-xl text-stone-900 font-semibold leading-snug">
+                        Download "{companion.title}" for Free!
+                      </h3>
+                      <p className="text-stone-500 text-xs sm:text-sm max-w-xl leading-relaxed">
+                        {companion.description}
+                      </p>
+                      <span className="inline-block text-[10px] font-mono bg-stone-100 text-stone-500 px-2.5 py-1 rounded-md font-bold uppercase">
+                        File Size: {companion.fileSize} • Format: {companion.type === 'Audio Series' ? 'ZIP (MP3)' : 'PDF'}
+                      </span>
+                    </div>
 
-                <button
-                  onClick={() => {
-                    if (selectedSermon.relatedMarketId) {
-                      onSelectProduct(selectedSermon.relatedMarketId);
-                    }
-                  }}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs tracking-widest uppercase px-6 py-3 rounded-xl shadow-md cursor-pointer shrink-0 transition-colors"
-                >
-                  Acquire Resource
-                </button>
-              </motion.div>
+                    <button
+                      onClick={() => {
+                        window.open(companion.downloadLink, '_blank');
+                      }}
+                      className="bg-stone-900 hover:bg-stone-850 text-white font-bold text-xs tracking-widest uppercase px-6 py-3 rounded-xl shadow-md cursor-pointer shrink-0 transition-colors flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" /> Download Free
+                    </button>
+                  </motion.div>
+                );
+              })()
             )}
 
             {/* Bottom Navigation */}
