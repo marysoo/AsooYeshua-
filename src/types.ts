@@ -10,6 +10,8 @@ export interface Sermon {
   author: string;
   clicks: number;
   relatedMarketId?: string;
+  tags?: string[];
+  docId?: string;
 }
 
 export interface Product {

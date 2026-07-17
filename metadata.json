@@ -1,6 +1,6 @@
 {
   "name": "AsooYeshua",
   "description": "A website dedicated to promoting the gospel of Jesus Christ, chaired by Tersoo Terence Aker aka AsooYeshua. Featuring an inspiring sermon blog, digital marketplace with Flutterwave monetization, and an interactive AI assistant.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

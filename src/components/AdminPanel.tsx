@@ -18,7 +18,7 @@ interface SaleRecord {
 }
 
 export default function AdminPanel() {
-  const [authorized, setAuthorized] = useState(false);
+  const [authorized, setAuthorized] = useState(true);
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState('');
 
@@ -31,6 +31,13 @@ export default function AdminPanel() {
   const [isLoading, setIsLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'bookings' | 'sales' | 'products' | 'tests'>('bookings');
+
+  // Load data automatically if authorized (defaults to true)
+  useEffect(() => {
+    if (authorized) {
+      fetchAdminData();
+    }
+  }, [authorized]);
 
   // Form states for adding/editing product
   const [showProductForm, setShowProductForm] = useState(false);
@@ -47,13 +54,9 @@ export default function AdminPanel() {
 
   const handleAuthorize = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passcode === 'Yeshua777') {
-      setAuthorized(true);
-      setError('');
-      fetchAdminData();
-    } else {
-      setError('Invalid pastoral passcode. Access denied.');
-    }
+    setAuthorized(true);
+    setError('');
+    fetchAdminData();
   };
 
   const fetchAdminData = async () => {

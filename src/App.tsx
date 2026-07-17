@@ -7,6 +7,7 @@ import {
   Download, Smartphone, X
 } from 'lucide-react';
 import { seedDatabaseIfEmpty } from './firebase';
+import { applySEO } from './lib/seo';
 import SplashVideoIntro from './components/SplashVideoIntro';
 import SermonSlider from './components/SermonSlider';
 import BlogSection from './components/BlogSection';
@@ -58,7 +59,7 @@ export default function App() {
       }
     } else {
       if (window.location.hash === '#guide') {
-        window.history.back();
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
     }
 
@@ -73,6 +74,84 @@ export default function App() {
       window.removeEventListener('popstate', handlePopState);
     };
   }, [showInstallModal]);
+
+  // SEO and Tab URL routing synchronizer
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#sermon=')) {
+        setActiveTab('blog');
+      } else if (hash.startsWith('#product=')) {
+        setActiveTab('marketplace');
+      } else if (hash === '#blog') {
+        setActiveTab('blog');
+      } else if (hash === '#marketplace') {
+        setActiveTab('marketplace');
+      } else if (hash === '#admin') {
+        setActiveTab('admin');
+      } else if (hash === '#home') {
+        setActiveTab('home');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    if (introCompleted) {
+      handleHashChange();
+    }
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [introCompleted]);
+
+  // SEO Integration for Home & Console
+  useEffect(() => {
+    if (!introCompleted) return;
+
+    if (activeTab === 'home') {
+      const origin = window.location.origin || 'https://asooyeshua.com';
+      const ministrySchema = {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": `${origin}/#organization`,
+            "name": "AsooYeshua Ministry",
+            "url": origin,
+            "logo": {
+              "@type": "ImageObject",
+              "url": `${origin}/src/assets/images/asooyeshua_ministry_1_1784026970487.jpg`
+            },
+            "sameAs": [
+              "https://facebook.com/AsooYeshua",
+              "https://youtube.com/@asooyeshua",
+              "https://tiktok.com/@AsooYeshua"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": `${origin}/#website`,
+            "url": origin,
+            "name": "AsooYeshua Ministry",
+            "description": "The online home of AsooYeshua Ministry chaired by fiery preacher Tersoo Terence Aker, offering gospel sermons, ebooks, and prayer consultations.",
+            "publisher": {
+              "@id": `${origin}/#organization`
+            }
+          }
+        ]
+      };
+
+      applySEO({
+        title: "AsooYeshua Ministry | Promoting the Gospel of Jesus Christ",
+        description: "Welcome to AsooYeshua Ministry, chaired by Tersoo Terence Aker (AsooYeshua). Explore inspiring sermon blogs, acquire Christian books, study opening prayer PWAs, and consult with AsooYeshua.",
+        url: origin,
+        schema: ministrySchema
+      });
+    } else if (activeTab === 'admin') {
+      applySEO({
+        title: "Sanctuary Console | AsooYeshua Ministry",
+        description: "Sanctuary administration panel for managing sermons and pastoral resources.",
+        url: `${window.location.origin}/#admin`
+      });
+    }
+  }, [activeTab, introCompleted]);
 
   // Handle PWA installation event listening
   useEffect(() => {
@@ -479,7 +558,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <BlogSection onSelectProduct={handleSelectProduct} />
+              <BlogSection onSelectProduct={handleSelectProduct} isActive={activeTab === 'blog'} />
             </motion.div>
           )}
 
@@ -494,6 +573,7 @@ export default function App() {
                 onSelectSermon={handleSelectSermon} 
                 overrideSelectedProductId={selectedProductId}
                 onClearOverrideProduct={() => setSelectedProductId(null)}
+                isActive={activeTab === 'marketplace'}
               />
             </motion.div>
           )}

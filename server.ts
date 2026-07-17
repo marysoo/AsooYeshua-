@@ -3,6 +3,9 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
 
 // Load environment variables
 dotenv.config();
@@ -105,6 +108,102 @@ Tone: Pastoral, compassionate, biblically sound, encouraging, respectful, and pr
     const reply = getFallbackResponse(messages);
     return res.json({ response: reply });
   }
+});
+
+// Initialize Firebase for sitemap/dynamic SEO if config exists
+let firestoreDb: any = null;
+try {
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const app = initializeApp(firebaseConfig);
+    firestoreDb = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || undefined);
+    console.log('Firebase initialized inside backend server for dynamic sitemaps.');
+  }
+} catch (err) {
+  console.error('Failed to initialize Firebase inside backend server:', err);
+}
+
+// SEO route: sitemap.xml
+app.get('/sitemap.xml', async (req, res) => {
+  res.header('Content-Type', 'application/xml');
+  
+  const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const host = req.headers.host || 'asooyeshua.com';
+  const baseUrl = `${protocol}://${host}`;
+
+  let sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Static Pages -->
+  <url>
+    <loc>${baseUrl}/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/#blog</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/#marketplace</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+
+  // Fetch dynamic sermons from Firestore
+  if (firestoreDb) {
+    try {
+      const querySnapshot = await getDocs(collection(firestoreDb, 'sermons'));
+      querySnapshot.forEach((docSnapshot) => {
+        const data = docSnapshot.data();
+        const id = data.id || docSnapshot.id;
+        sitemapXml += `  <url>
+    <loc>${baseUrl}/#sermon=${id}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+`;
+      });
+    } catch (err) {
+      console.error('Error adding sermons to sitemap:', err);
+    }
+
+    try {
+      const querySnapshot = await getDocs(collection(firestoreDb, 'marketplace'));
+      querySnapshot.forEach((docSnapshot) => {
+        const data = docSnapshot.data();
+        if (data.type === 'App Access') {
+          sitemapXml += `  <url>
+    <loc>${baseUrl}/#product=${docSnapshot.id}</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+`;
+        }
+      });
+    } catch (err) {
+      console.error('Error adding marketplace products to sitemap:', err);
+    }
+  }
+
+  sitemapXml += `</urlset>`;
+  res.send(sitemapXml);
+});
+
+// SEO route: robots.txt
+app.get('/robots.txt', (req, res) => {
+  res.header('Content-Type', 'text/plain');
+  const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const host = req.headers.host || 'asooyeshua.com';
+  const baseUrl = `${protocol}://${host}`;
+
+  res.send(`User-agent: *
+Allow: /
+
+Sitemap: ${baseUrl}/sitemap.xml
+`);
 });
 
 // Start server and handle Vite middleware

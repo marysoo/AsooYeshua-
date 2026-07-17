@@ -5,18 +5,22 @@ import { collection, getDocs, addDoc, doc, getDoc, deleteDoc } from 'firebase/fi
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Product } from '../types';
 
+import { applySEO } from '../lib/seo';
+
 declare const FlutterwaveCheckout: any;
 
 interface MarketplaceSectionProps {
   onSelectSermon: (sermonId: string) => void;
   overrideSelectedProductId?: string | null;
   onClearOverrideProduct?: () => void;
+  isActive?: boolean;
 }
 
 export default function MarketplaceSection({
   onSelectSermon,
   overrideSelectedProductId,
-  onClearOverrideProduct
+  onClearOverrideProduct,
+  isActive = false
 }: MarketplaceSectionProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,31 +63,106 @@ export default function MarketplaceSection({
     };
   }, []);
 
-  // Synchronize showCheckoutModal with window hash to handle browser Back button gracefully
+  // Synchronize activeProduct with window hash to handle browser Back button & SEO deep links gracefully
   useEffect(() => {
-    if (showCheckoutModal) {
-      if (window.location.hash !== '#checkout') {
-        window.history.pushState({ modal: 'checkout' }, '', '#checkout');
+    if (showCheckoutModal && activeProduct) {
+      const targetHash = `#product=${activeProduct.id}`;
+      if (window.location.hash !== targetHash) {
+        window.history.pushState({ modal: 'checkout', id: activeProduct.id }, '', targetHash);
       }
     } else {
-      if (window.location.hash === '#checkout') {
-        window.history.back();
+      if (window.location.hash.startsWith('#product=')) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
     }
 
-    const handlePopState = (e: PopStateEvent) => {
-      if (window.location.hash !== '#checkout' && showCheckoutModal) {
+    const handleHashAndPop = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#product=')) {
+        const prodId = hash.replace('#product=', '');
+        const found = products.find(p => p.id === prodId);
+        if (found) {
+          setActiveProduct(found);
+          setShowCheckoutModal(true);
+        }
+      } else if (hash === '#marketplace' || !hash) {
         setShowCheckoutModal(false);
+        setActiveProduct(null);
         setSubmittedDirectPayDetails(false);
         setPaymentSuccess(false);
       }
     };
 
-    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handleHashAndPop);
+    window.addEventListener('popstate', handleHashAndPop);
+    
+    // Check hash on load or when products list updates
+    if (products.length > 0) {
+      handleHashAndPop();
+    }
+
     return () => {
-      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handleHashAndPop);
+      window.removeEventListener('popstate', handleHashAndPop);
     };
-  }, [showCheckoutModal]);
+  }, [showCheckoutModal, activeProduct, products]);
+
+  // SEO Integration for Marketplace
+  useEffect(() => {
+    if (!isActive) return;
+
+    const origin = window.location.origin || 'https://asooyeshua.com';
+
+    if (activeProduct) {
+      const productSchema = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": activeProduct.title,
+        "description": activeProduct.description,
+        "image": [
+          activeProduct.coverImage && activeProduct.coverImage.startsWith('/') 
+            ? `${origin}${activeProduct.coverImage}` 
+            : activeProduct.coverImage
+        ],
+        "offers": {
+          "@type": "Offer",
+          "url": `${origin}/#product=${activeProduct.id}`,
+          "priceCurrency": "NGN",
+          "price": activeProduct.price,
+          "availability": "https://schema.org/InStock"
+        }
+      };
+
+      applySEO({
+        title: `${activeProduct.title} | AsooYeshua Store`,
+        description: activeProduct.description,
+        image: activeProduct.coverImage,
+        url: `${origin}/#product=${activeProduct.id}`,
+        schema: productSchema
+      });
+    } else {
+      const storeSchema = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "AsooYeshua Marketplace",
+        "description": "Spiritual study materials, books, and interactive applications compiled by Tersoo Terence Aker.",
+        "url": `${origin}/#marketplace`,
+        "itemListElement": products.map((p, idx) => ({
+          "@type": "ListItem",
+          "position": idx + 1,
+          "url": `${origin}/#product=${p.id}`,
+          "name": p.title
+        }))
+      };
+
+      applySEO({
+        title: "Faith Resources & eBooks | AsooYeshua Marketplace",
+        description: "Acquire spiritual study materials, books, and interactive applications compiled by Tersoo Terence Aker (AsooYeshua) to enrich your spiritual devotion.",
+        url: `${origin}/#marketplace`,
+        schema: storeSchema
+      });
+    }
+  }, [activeProduct, products, isActive]);
 
   // Fetch products from Firestore
   const fetchProducts = async () => {
@@ -387,10 +466,10 @@ export default function MarketplaceSection({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-md bg-white border border-stone-200 rounded-2xl shadow-2xl overflow-hidden z-10"
+              className="relative w-full max-w-md bg-white border border-stone-200 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh] z-10"
             >
               {/* Header */}
-              <div className="bg-stone-950 text-white p-5 flex items-center justify-between border-b border-stone-850">
+              <div className="bg-stone-950 text-white p-5 flex items-center justify-between border-b border-stone-850 shrink-0 rounded-t-2xl">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5 text-amber-500" />
                   <h3 className="font-serif text-lg font-medium text-amber-50 tracking-wide">
@@ -405,452 +484,31 @@ export default function MarketplaceSection({
                 </button>
               </div>
 
-              {/* Form or Receipt Content */}
-              {submittedDirectPayDetails ? (
-                <div className="p-6 text-center space-y-5">
-                  <div className="inline-flex w-12 h-12 bg-emerald-50 border border-emerald-200 rounded-full items-center justify-center text-emerald-600 shadow-xs mx-auto">
-                    <CheckCircle className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-serif text-lg text-stone-900 font-bold">
-                      Payment Details Logged
-                    </h3>
-                    <p className="text-stone-500 text-xs mt-1.5 leading-relaxed">
-                      Thank you! Since you selected the <strong>Official Pay Link</strong>, your transaction details have been submitted.
-                    </p>
-                    <div className="text-left text-stone-600 text-[11px] mt-4 bg-amber-50/55 border border-amber-200/40 p-4 rounded-xl space-y-2 leading-relaxed">
-                      <p>
-                        <strong>How manual verification works:</strong>
-                      </p>
-                      <ol className="list-decimal list-inside space-y-1">
-                        <li>Our system logged your details with reference: <span className="font-mono font-bold">{txRef}</span>.</li>
-                        <li>Our admin team will cross-verify this name/email against our Flutterwave link deposits.</li>
-                        <li>Upon confirmation (typically in <strong>5 to 10 minutes</strong>), your premium PWA app direct link and custom access credentials will be sent to your email: <span className="font-bold text-amber-900">{checkoutForm.email}</span>.</li>
-                      </ol>
+              {/* Form or Receipt Content (Scrollable Container) */}
+              <div className="overflow-y-auto flex-1">
+                {submittedDirectPayDetails ? (
+                  <div className="p-6 text-center space-y-5">
+                    <div className="inline-flex w-12 h-12 bg-emerald-50 border border-emerald-200 rounded-full items-center justify-center text-emerald-600 shadow-xs mx-auto">
+                      <CheckCircle className="w-6 h-6 text-emerald-600" />
                     </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowCheckoutModal(false);
-                      setActiveProduct(null);
-                      setPaymentSuccess(false);
-                      setSubmittedDirectPayDetails(false);
-                      setCheckoutForm({ name: '', email: '', phone: '' });
-                    }}
-                    className="w-full bg-stone-900 hover:bg-stone-850 text-white py-2.5 rounded-xl font-bold text-xs tracking-widest uppercase transition-colors cursor-pointer"
-                  >
-                    Return to Bookstore
-                  </button>
-                </div>
-              ) : !paymentSuccess ? (
-                <div className="p-5 space-y-4">
-                  {/* Brief product visual recap */}
-                  <div className="bg-stone-50 border border-stone-150 rounded-xl p-3 flex gap-3 items-center">
-                    <img
-                      src={activeProduct.coverImage || '/src/assets/images/asooyeshua_ministry_1_1784026970487.jpg'}
-                      alt={activeProduct.title}
-                      referrerPolicy="no-referrer"
-                      className="w-12 h-12 object-cover rounded-md shrink-0"
-                    />
                     <div>
-                      <h4 className="font-serif text-stone-900 font-bold text-xs sm:text-sm line-clamp-1">
-                        {activeProduct.title}
-                      </h4>
-                      <p className="text-amber-700 font-mono text-xs font-bold">
-                        ₦{activeProduct.price.toLocaleString()}
+                      <h3 className="font-serif text-lg text-stone-900 font-bold">
+                        Payment Details Logged
+                      </h3>
+                      <p className="text-stone-500 text-xs mt-1.5 leading-relaxed">
+                        Thank you! Since you selected the <strong>Official Pay Link</strong>, your transaction details have been submitted.
                       </p>
-                    </div>
-                  </div>
-
-                  {/* Payment Method Selector Tabs */}
-                  <div className="grid grid-cols-2 gap-1 bg-stone-100 p-1 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('link')}
-                      className={`py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                        paymentMethod === 'link'
-                          ? 'bg-white text-stone-900 shadow-xs'
-                          : 'text-stone-500 hover:text-stone-850'
-                      }`}
-                    >
-                      🔗 Official Pay Link (Recommended)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('card')}
-                      className={`py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                        paymentMethod === 'card'
-                          ? 'bg-white text-stone-900 shadow-xs'
-                          : 'text-stone-500 hover:text-stone-850'
-                      }`}
-                    >
-                      💳 Quick Inline Card
-                    </button>
-                  </div>
-
-                  {paymentMethod === 'link' ? (
-                    /* Dynamic Payment Link Flow */
-                    <form onSubmit={handleDirectLinkPaymentSubmit} className="space-y-4">
-                      <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl space-y-2">
-                        <p className="text-stone-700 text-xs font-semibold flex items-center gap-1.5">
-                          <Globe className="w-4 h-4 text-amber-600" /> Pay directly via AsooYeshua official link
+                      <div className="text-left text-stone-600 text-[11px] mt-4 bg-amber-50/55 border border-amber-200/40 p-4 rounded-xl space-y-2 leading-relaxed">
+                        <p>
+                          <strong>How manual verification works:</strong>
                         </p>
-                        <p className="text-stone-500 text-[11px] leading-normal">
-                          Click the official button below to pay on our secure platform. Once completed, submit your delivery details below to activate instant access.
-                        </p>
-                        <a
-                          href={globalFlutterwaveLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="w-full bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
-                        >
-                          Open Secure Flutterwave Page <ArrowRight className="w-3.5 h-3.5" />
-                        </a>
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Our system logged your details with reference: <span className="font-mono font-bold">{txRef}</span>.</li>
+                          <li>Our admin team will cross-verify this name/email against our Flutterwave link deposits.</li>
+                          <li>Upon confirmation (typically in <strong>5 to 10 minutes</strong>), your premium PWA app direct link and custom access credentials will be sent to your email: <span className="font-bold text-amber-900">{checkoutForm.email}</span>.</li>
+                        </ol>
                       </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                            Your Full Name
-                          </label>
-                          <div className="relative">
-                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                              type="text"
-                              required
-                              value={checkoutForm.name}
-                              onChange={(e) => setCheckoutForm({ ...checkoutForm, name: e.target.value })}
-                              placeholder="Your Name"
-                              className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                            Your Delivery Email Address
-                          </label>
-                          <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                              type="email"
-                              required
-                              value={checkoutForm.email}
-                              onChange={(e) => setCheckoutForm({ ...checkoutForm, email: e.target.value })}
-                              placeholder="your-email@example.com"
-                              className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                            WhatsApp Phone Number (Optional)
-                          </label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                              type="tel"
-                              value={checkoutForm.phone}
-                              onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
-                              placeholder="e.g. 08030000000"
-                              className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isVerifyingDirectLink}
-                        className="w-full bg-stone-900 hover:bg-stone-850 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 mt-4 cursor-pointer shadow-md transition-colors"
-                      >
-                        <CheckCircle className="w-4 h-4 text-amber-400" /> 
-                        {isVerifyingDirectLink ? 'Activating Access...' : 'I completed payment - Unlock download'}
-                      </button>
-                    </form>
-                  ) : (
-                    /* Inline Card Widget Flow */
-                    <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                      <p className="text-stone-500 text-xs text-center leading-relaxed">
-                        Enter your delivery details below. The Flutterwave credit card and bank payment overlay will launch instantly to complete transaction.
-                      </p>
-
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                            Full Name
-                          </label>
-                          <div className="relative">
-                            <User className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                              type="text"
-                              required
-                              value={checkoutForm.name}
-                              onChange={(e) => setCheckoutForm({ ...checkoutForm, name: e.target.value })}
-                              placeholder="Your Name"
-                              className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                            Delivery Email Address
-                          </label>
-                          <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                              type="email"
-                              required
-                              value={checkoutForm.email}
-                              onChange={(e) => setCheckoutForm({ ...checkoutForm, email: e.target.value })}
-                              placeholder="your-email@example.com"
-                              className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                            Phone Number (Optional)
-                          </label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
-                            <input
-                              type="tel"
-                              value={checkoutForm.phone}
-                              onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
-                              placeholder="e.g. 08030000000"
-                              className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 mt-4 cursor-pointer shadow-md transition-colors"
-                      >
-                        Proceed to Secure Checkout Window
-                      </button>
-                    </form>
-                  )}
-                </div>
-              ) : (
-                /* Unlocked direct PWA installation & Setup Guide */
-                <div className="p-6 text-center space-y-6 max-h-[80vh] overflow-y-auto">
-                  <div className="inline-flex w-14 h-14 bg-amber-50 border border-amber-200 rounded-full items-center justify-center text-amber-600 shadow-xs">
-                    <CheckCircle className="w-8 h-8" />
-                  </div>
-
-                  <div>
-                    <h3 className="font-serif text-xl text-stone-900 font-bold">
-                      Gospel App Access Activated!
-                    </h3>
-                    <p className="text-stone-500 text-xs mt-1.5 max-w-xs mx-auto leading-relaxed">
-                      Thank you for your purchase! Your payment was verified and full access to the **Opening Prayer for Bible Study PWA** is unlocked!
-                    </p>
-                  </div>
-
-                  {/* Purchased Resource Card */}
-                  <div className="bg-stone-50 border border-stone-150 rounded-xl p-3 text-left">
-                    <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
-                      Purchased Resource
-                    </span>
-                    <h4 className="font-serif text-stone-800 font-bold text-xs flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" /> {activeProduct.title}
-                    </h4>
-                    <span className="text-[10px] text-stone-400 font-mono block mt-1.5">
-                      Transaction Ref: {txRef}
-                    </span>
-                  </div>
-
-                  {/* Direct PWA App Link Card */}
-                  <div className="bg-amber-50/45 border border-amber-100 rounded-xl p-4 text-left space-y-3">
-                    <div>
-                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
-                        Your Direct PWA App Link
-                      </span>
-                      <p className="text-[11px] text-stone-600 mt-1">
-                        To add this app to your home screen, ensure you are browsing in Safari (iOS) or Chrome (Android).
-                      </p>
                     </div>
-
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value="https://openingprayer.earningfunnel.workers.dev/"
-                        className="bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 font-mono flex-1 focus:outline-hidden"
-                      />
-                      <button
-                        onClick={handleCopyLink}
-                        className="bg-white border border-stone-200 hover:border-stone-300 text-stone-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            <span className="text-emerald-600">Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => window.open('https://openingprayer.earningfunnel.workers.dev/', '_blank')}
-                      className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" /> Launch in External Browser
-                    </button>
-                  </div>
-
-                  {/* Interactive PWA Installation Guide Tabs */}
-                  <div className="border border-stone-150 rounded-xl overflow-hidden bg-white text-left">
-                    {/* Tabs Header */}
-                    <div className="flex border-b border-stone-100 bg-stone-50">
-                      <button
-                        onClick={() => setGuideTab('ios')}
-                        className={`flex-1 py-2 px-3 text-center text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                          guideTab === 'ios'
-                            ? 'border-amber-600 text-amber-700 bg-white'
-                            : 'border-transparent text-stone-500 hover:text-stone-800'
-                        }`}
-                      >
-                        Apple iOS
-                      </button>
-                      <button
-                        onClick={() => setGuideTab('android')}
-                        className={`flex-1 py-2 px-3 text-center text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                          guideTab === 'android'
-                            ? 'border-amber-600 text-amber-700 bg-white'
-                            : 'border-transparent text-stone-500 hover:text-stone-800'
-                        }`}
-                      >
-                        Android
-                      </button>
-                      <button
-                        onClick={() => setGuideTab('desktop')}
-                        className={`flex-1 py-2 px-3 text-center text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                          guideTab === 'desktop'
-                            ? 'border-amber-600 text-amber-700 bg-white'
-                            : 'border-transparent text-stone-500 hover:text-stone-800'
-                        }`}
-                      >
-                        Desktop
-                      </button>
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="p-4 space-y-3">
-                      {guideTab === 'ios' && (
-                        <div className="space-y-3.5 text-xs text-stone-700">
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              1
-                            </span>
-                            <p>
-                              Tap the <span className="font-bold">Share</span> button <span className="inline-block px-1.5 py-0.5 bg-stone-100 rounded text-[10px]">🗳️</span> in the Safari browser menu.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              2
-                            </span>
-                            <p>
-                              Scroll down and tap <span className="font-bold">"Add to Home Screen"</span>.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              3
-                            </span>
-                            <p>
-                              Tap <span className="font-bold">"Add"</span> in the top-right corner to place the **Opening Prayer** launcher icon on your phone!
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {guideTab === 'android' && (
-                        <div className="space-y-3.5 text-xs text-stone-700">
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              1
-                            </span>
-                            <p>
-                              Tap the <span className="font-bold">Menu</span> button <span className="font-bold">(three dots ⋮)</span> in Chrome.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              2
-                            </span>
-                            <p>
-                              Select <span className="font-bold">"Install App"</span> or <span className="font-bold">"Add to Home screen"</span> from the list.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              3
-                            </span>
-                            <p>
-                              Confirm the prompt and the app will immediately install as an offline-ready launcher icon.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {guideTab === 'desktop' && (
-                        <div className="space-y-3.5 text-xs text-stone-700">
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              1
-                            </span>
-                            <p>
-                              Look at the right side of the URL browser address bar for the <span className="font-bold">Install</span> icon (looks like a monitor with an arrow or a plus sign).
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              2
-                            </span>
-                            <p>
-                              Click <span className="font-bold">"Install"</span> in the popup that appears.
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                              3
-                            </span>
-                            <p>
-                              The app will open in its own clean window, with its own icon in your system taskbar or dock!
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Usage Guide specifically for the Opening Prayer */}
-                  <div className="bg-stone-50 border border-stone-150 rounded-xl p-4 text-left space-y-2 text-xs">
-                    <p className="font-bold text-stone-800 flex items-center gap-1">
-                      🙏 How to Use the Opening Prayer App:
-                    </p>
-                    <ul className="text-stone-600 space-y-1.5 list-disc list-inside">
-                      <li><strong>Instant Generation:</strong> Select your Bible study theme (e.g., Grace, Faith, Wisdom) and tap "Generate Prayer" to get a beautifully structured opening prayer instantly.</li>
-                      <li><strong>Offline Support:</strong> Pin/install the app on your device's home screen. The generator, templates, and scriptures work completely offline during your Bible study sessions.</li>
-                      <li><strong>Customization:</strong> Edit any generated prayer or scripture reference before sharing it with your study group or church congregation.</li>
-                    </ul>
-                  </div>
-
-                  {/* Close & Continue Actions */}
-                  <div className="pt-2">
                     <button
                       onClick={() => {
                         setShowCheckoutModal(false);
@@ -859,13 +517,460 @@ export default function MarketplaceSection({
                         setSubmittedDirectPayDetails(false);
                         setCheckoutForm({ name: '', email: '', phone: '' });
                       }}
-                      className="w-full bg-stone-900 hover:bg-stone-800 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase cursor-pointer transition-colors"
+                      className="w-full bg-stone-900 hover:bg-stone-850 text-white py-2.5 rounded-xl font-bold text-xs tracking-widest uppercase transition-colors cursor-pointer"
                     >
                       Return to Bookstore
                     </button>
                   </div>
-                </div>
-              )}
+                ) : !paymentSuccess ? (
+                  <div className="p-5 space-y-4">
+                    {/* Brief product visual recap */}
+                    <div className="bg-stone-50 border border-stone-150 rounded-xl p-3 flex gap-3 items-center">
+                      <img
+                        src={activeProduct.coverImage || '/src/assets/images/asooyeshua_ministry_1_1784026970487.jpg'}
+                        alt={activeProduct.title}
+                        referrerPolicy="no-referrer"
+                        className="w-12 h-12 object-cover rounded-md shrink-0"
+                      />
+                      <div>
+                        <h4 className="font-serif text-stone-900 font-bold text-xs sm:text-sm line-clamp-1">
+                          {activeProduct.title}
+                        </h4>
+                        <p className="text-amber-700 font-mono text-xs font-bold">
+                          ₦{activeProduct.price.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Payment Method Selector Tabs */}
+                    <div className="grid grid-cols-2 gap-1 bg-stone-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('link')}
+                        className={`py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                          paymentMethod === 'link'
+                            ? 'bg-white text-stone-900 shadow-xs'
+                            : 'text-stone-500 hover:text-stone-850'
+                        }`}
+                      >
+                        🔗 Official Pay Link (Recommended)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('card')}
+                        className={`py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                          paymentMethod === 'card'
+                            ? 'bg-white text-stone-900 shadow-xs'
+                            : 'text-stone-500 hover:text-stone-850'
+                        }`}
+                      >
+                        💳 Quick Inline Card
+                      </button>
+                    </div>
+
+                    {paymentMethod === 'link' ? (
+                      /* Dynamic Payment Link Flow */
+                      <form onSubmit={handleDirectLinkPaymentSubmit} className="space-y-4">
+                        <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl space-y-2">
+                          <p className="text-stone-700 text-xs font-semibold flex items-center gap-1.5">
+                            <Globe className="w-4 h-4 text-amber-600" /> Pay directly via AsooYeshua official link
+                          </p>
+                          <p className="text-stone-500 text-[11px] leading-normal">
+                            Click the official button below to pay on our secure platform. Once completed, submit your delivery details below to activate instant access.
+                          </p>
+                          <a
+                            href={globalFlutterwaveLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="w-full bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                          >
+                            Open Secure Flutterwave Page <ArrowRight className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                              Your Full Name
+                            </label>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                              <input
+                                type="text"
+                                required
+                                value={checkoutForm.name}
+                                onChange={(e) => setCheckoutForm({ ...checkoutForm, name: e.target.value })}
+                                placeholder="Your Name"
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                              Your Delivery Email Address
+                            </label>
+                            <div className="relative">
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                              <input
+                                type="email"
+                                required
+                                value={checkoutForm.email}
+                                onChange={(e) => setCheckoutForm({ ...checkoutForm, email: e.target.value })}
+                                placeholder="your-email@example.com"
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                              WhatsApp Phone Number (Optional)
+                            </label>
+                            <div className="relative">
+                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                              <input
+                                type="tel"
+                                value={checkoutForm.phone}
+                                onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
+                                placeholder="e.g. 08030000000"
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isVerifyingDirectLink}
+                          className="w-full bg-stone-900 hover:bg-stone-850 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 mt-4 cursor-pointer shadow-md transition-colors animate-pulse"
+                        >
+                          <CheckCircle className="w-4 h-4 text-amber-400" /> 
+                          {isVerifyingDirectLink ? 'Activating Access...' : 'I completed payment - Unlock download'}
+                        </button>
+
+                        {/* Navigation button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCheckoutModal(false);
+                            setActiveProduct(null);
+                          }}
+                          className="w-full bg-white hover:bg-stone-50 text-stone-600 border border-stone-200 py-3 rounded-xl font-bold text-xs tracking-widest uppercase transition-colors cursor-pointer mt-2 flex items-center justify-center gap-1.5"
+                        >
+                          ← Cancel & Go Back
+                        </button>
+                      </form>
+                    ) : (
+                      /* Inline Card Widget Flow */
+                      <form onSubmit={handlePaymentSubmit} className="space-y-4">
+                        <p className="text-stone-500 text-xs text-center leading-relaxed">
+                          Enter your delivery details below. The Flutterwave credit card and bank payment overlay will launch instantly to complete transaction.
+                        </p>
+
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                              Full Name
+                            </label>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                              <input
+                                type="text"
+                                required
+                                value={checkoutForm.name}
+                                onChange={(e) => setCheckoutForm({ ...checkoutForm, name: e.target.value })}
+                                placeholder="Your Name"
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                              Delivery Email Address
+                            </label>
+                            <div className="relative">
+                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                              <input
+                                type="email"
+                                required
+                                value={checkoutForm.email}
+                                onChange={(e) => setCheckoutForm({ ...checkoutForm, email: e.target.value })}
+                                placeholder="your-email@example.com"
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                              Phone Number (Optional)
+                            </label>
+                            <div className="relative">
+                              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                              <input
+                                type="tel"
+                                value={checkoutForm.phone}
+                                onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
+                                placeholder="e.g. 08030000000"
+                                className="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:border-amber-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 mt-4 cursor-pointer shadow-md transition-colors"
+                        >
+                          Proceed to Secure Checkout Window
+                        </button>
+
+                        {/* Navigation button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCheckoutModal(false);
+                            setActiveProduct(null);
+                          }}
+                          className="w-full bg-white hover:bg-stone-50 text-stone-600 border border-stone-200 py-3 rounded-xl font-bold text-xs tracking-widest uppercase transition-colors cursor-pointer mt-2 flex items-center justify-center gap-1.5"
+                        >
+                          ← Cancel & Go Back
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ) : (
+                  /* Unlocked direct PWA installation & Setup Guide */
+                  <div className="p-6 text-center space-y-6">
+                    <div className="inline-flex w-14 h-14 bg-amber-50 border border-amber-200 rounded-full items-center justify-center text-amber-600 shadow-xs">
+                      <CheckCircle className="w-8 h-8" />
+                    </div>
+
+                    <div>
+                      <h3 className="font-serif text-xl text-stone-900 font-bold">
+                        Gospel App Access Activated!
+                      </h3>
+                      <p className="text-stone-500 text-xs mt-1.5 max-w-xs mx-auto leading-relaxed">
+                        Thank you for your purchase! Your payment was verified and full access to the **Opening Prayer for Bible Study PWA** is unlocked!
+                      </p>
+                    </div>
+
+                    {/* Purchased Resource Card */}
+                    <div className="bg-stone-50 border border-stone-150 rounded-xl p-3 text-left">
+                      <span className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block mb-1">
+                        Purchased Resource
+                      </span>
+                      <h4 className="font-serif text-stone-800 font-bold text-xs flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" /> {activeProduct.title}
+                      </h4>
+                      <span className="text-[10px] text-stone-400 font-mono block mt-1.5">
+                        Transaction Ref: {txRef}
+                      </span>
+                    </div>
+
+                    {/* Direct PWA App Link Card */}
+                    <div className="bg-amber-50/45 border border-amber-100 rounded-xl p-4 text-left space-y-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                          Your Direct PWA App Link
+                        </span>
+                        <p className="text-[11px] text-stone-600 mt-1">
+                          To add this app to your home screen, ensure you are browsing in Safari (iOS) or Chrome (Android).
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value="https://openingprayer.earningfunnel.workers.dev/"
+                          className="bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 text-xs text-stone-700 font-mono flex-1 focus:outline-hidden"
+                        />
+                        <button
+                          onClick={handleCopyLink}
+                          className="bg-white border border-stone-200 hover:border-stone-300 text-stone-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              <span className="text-emerald-600">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => window.open('https://openingprayer.earningfunnel.workers.dev/', '_blank')}
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> Launch in External Browser
+                      </button>
+                    </div>
+
+                    {/* Interactive PWA Installation Guide Tabs */}
+                    <div className="border border-stone-150 rounded-xl overflow-hidden bg-white text-left">
+                      {/* Tabs Header */}
+                      <div className="flex border-b border-stone-100 bg-stone-50">
+                        <button
+                          onClick={() => setGuideTab('ios')}
+                          className={`flex-1 py-2 px-3 text-center text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                            guideTab === 'ios'
+                              ? 'border-amber-600 text-amber-700 bg-white'
+                              : 'border-transparent text-stone-500 hover:text-stone-800'
+                          }`}
+                        >
+                          Apple iOS
+                        </button>
+                        <button
+                          onClick={() => setGuideTab('android')}
+                          className={`flex-1 py-2 px-3 text-center text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                            guideTab === 'android'
+                              ? 'border-amber-600 text-amber-700 bg-white'
+                              : 'border-transparent text-stone-500 hover:text-stone-800'
+                          }`}
+                        >
+                          Android
+                        </button>
+                        <button
+                          onClick={() => setGuideTab('desktop')}
+                          className={`flex-1 py-2 px-3 text-center text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                            guideTab === 'desktop'
+                              ? 'border-amber-600 text-amber-700 bg-white'
+                              : 'border-transparent text-stone-500 hover:text-stone-800'
+                          }`}
+                        >
+                          Desktop
+                        </button>
+                      </div>
+
+                      {/* Tab Content */}
+                      <div className="p-4 space-y-3">
+                        {guideTab === 'ios' && (
+                          <div className="space-y-3.5 text-xs text-stone-700">
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                1
+                              </span>
+                              <p>
+                                Tap the <span className="font-bold">Share</span> button <span className="inline-block px-1.5 py-0.5 bg-stone-100 rounded text-[10px]">🗳️</span> in the Safari browser menu.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                2
+                              </span>
+                              <p>
+                                Scroll down and tap <span className="font-bold">"Add to Home Screen"</span>.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                3
+                              </span>
+                              <p>
+                                Tap <span className="font-bold">"Add"</span> in the top-right corner to place the **Opening Prayer** launcher icon on your phone!
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {guideTab === 'android' && (
+                          <div className="space-y-3.5 text-xs text-stone-700">
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                1
+                              </span>
+                              <p>
+                                Tap the <span className="font-bold">Menu</span> button <span className="font-bold">(three dots ⋮)</span> in Chrome.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                2
+                              </span>
+                              <p>
+                                Select <span className="font-bold">"Install App"</span> or <span className="font-bold">"Add to Home screen"</span> from the list.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                3
+                              </span>
+                              <p>
+                                Confirm the prompt and the app will immediately install as an offline-ready launcher icon.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {guideTab === 'desktop' && (
+                          <div className="space-y-3.5 text-xs text-stone-700">
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                1
+                              </span>
+                              <p>
+                                Look at the right side of the URL browser address bar for the <span className="font-bold">Install</span> icon (looks like a monitor with an arrow or a plus sign).
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                2
+                              </span>
+                              <p>
+                                Click <span className="font-bold">"Install"</span> in the popup that appears.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-2.5">
+                              <span className="w-5 h-5 bg-stone-100 text-stone-700 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                3
+                              </span>
+                              <p>
+                                The app will open in its own clean window, with its own icon in your system taskbar or dock!
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Usage Guide specifically for the Opening Prayer */}
+                    <div className="bg-stone-50 border border-stone-150 rounded-xl p-4 text-left space-y-2 text-xs">
+                      <p className="font-bold text-stone-800 flex items-center gap-1">
+                        🙏 How to Use the Opening Prayer App:
+                      </p>
+                      <ul className="text-stone-600 space-y-1.5 list-disc list-inside">
+                        <li><strong>Instant Generation:</strong> Select your Bible study theme (e.g., Grace, Faith, Wisdom) and tap "Generate Prayer" to get a beautifully structured opening prayer instantly.</li>
+                        <li><strong>Offline Support:</strong> Pin/install the app on your device's home screen. The generator, templates, and scriptures work completely offline during your Bible study sessions.</li>
+                        <li><strong>Customization:</strong> Edit any generated prayer or scripture reference before sharing it with your study group or church congregation.</li>
+                      </ul>
+                    </div>
+
+                    {/* Close & Continue Actions */}
+                    <div className="pt-2">
+                      <button
+                        onClick={() => {
+                          setShowCheckoutModal(false);
+                          setActiveProduct(null);
+                          setPaymentSuccess(false);
+                          setSubmittedDirectPayDetails(false);
+                          setCheckoutForm({ name: '', email: '', phone: '' });
+                        }}
+                        className="w-full bg-stone-900 hover:bg-stone-800 text-white py-3 rounded-xl font-bold text-xs tracking-widest uppercase cursor-pointer transition-colors"
+                      >
+                        Return to Bookstore
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </motion.div>
           </div>
         )}
