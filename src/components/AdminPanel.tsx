@@ -18,7 +18,7 @@ interface SaleRecord {
 }
 
 export default function AdminPanel() {
-  const [authorized, setAuthorized] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState('');
 
@@ -54,9 +54,13 @@ export default function AdminPanel() {
 
   const handleAuthorize = (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthorized(true);
-    setError('');
-    fetchAdminData();
+    if (passcode === 'Yeshua777') {
+      setAuthorized(true);
+      setError('');
+      fetchAdminData();
+    } else {
+      setError('Incorrect passcode. Please try again.');
+    }
   };
 
   const fetchAdminData = async () => {
@@ -246,29 +250,13 @@ export default function AdminPanel() {
 
   const handleUpdateBookingStatus = async (bookingId: string, currentDocId: string, newStatus: 'completed' | 'cancelled') => {
     try {
-      // Find matching document in Firestore
-      let snap;
       try {
-        snap = await getDocs(collection(db, 'bookings'));
+        await updateDoc(doc(db, 'bookings', bookingId), { status: newStatus });
       } catch (dbErr) {
-        handleFirestoreError(dbErr, OperationType.GET, 'bookings');
+        handleFirestoreError(dbErr, OperationType.UPDATE, `bookings/${bookingId}`);
       }
-      let targetDocId = '';
-      snap.forEach((docRef) => {
-        if (docRef.data().whatsapp === bookings.find(b => b.id === bookingId)?.whatsapp && docRef.data().date === bookings.find(b => b.id === bookingId)?.date) {
-          targetDocId = docRef.id;
-        }
-      });
-
-      if (targetDocId) {
-        try {
-          await updateDoc(doc(db, 'bookings', targetDocId), { status: newStatus });
-        } catch (dbErr) {
-          handleFirestoreError(dbErr, OperationType.UPDATE, `bookings/${targetDocId}`);
-        }
-        await fetchAdminData();
-        alert(`Reservation marked as ${newStatus}!`);
-      }
+      await fetchAdminData();
+      alert(`Reservation marked as ${newStatus}!`);
     } catch (err) {
       console.error(err);
     }
@@ -277,28 +265,13 @@ export default function AdminPanel() {
   const handleDeleteBooking = async (bookingId: string) => {
     if (!confirm('Are you sure you want to delete this call reservation?')) return;
     try {
-      let snap;
       try {
-        snap = await getDocs(collection(db, 'bookings'));
+        await deleteDoc(doc(db, 'bookings', bookingId));
       } catch (dbErr) {
-        handleFirestoreError(dbErr, OperationType.GET, 'bookings');
+        handleFirestoreError(dbErr, OperationType.DELETE, `bookings/${bookingId}`);
       }
-      let targetDocId = '';
-      snap.forEach((docRef) => {
-        if (docRef.data().whatsapp === bookings.find(b => b.id === bookingId)?.whatsapp) {
-          targetDocId = docRef.id;
-        }
-      });
-
-      if (targetDocId) {
-        try {
-          await deleteDoc(doc(db, 'bookings', targetDocId));
-        } catch (dbErr) {
-          handleFirestoreError(dbErr, OperationType.DELETE, `bookings/${targetDocId}`);
-        }
-        await fetchAdminData();
-        alert('Booking removed.');
-      }
+      await fetchAdminData();
+      alert('Booking removed.');
     } catch (err) {
       console.error(err);
     }

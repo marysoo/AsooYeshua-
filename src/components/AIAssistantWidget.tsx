@@ -131,21 +131,25 @@ export default function AIAssistantWidget({ onSelectTab }: AIAssistantWidgetProp
           status: 'pending',
           createdAt: new Date().toISOString()
         });
+        if (docRef) {
+          setBookingId(docRef.id);
+          setBookingSuccess(true);
+          
+          // Push confirmation to chat as well
+          const confirmMsg: ChatMessage = {
+            id: Math.random().toString(),
+            role: 'assistant',
+            content: `Blessed be God! I have successfully registered your prayer and consultation call request for ${bookingForm.date} at ${bookingForm.time}.\n\nPlease click the button below to send this notification instantly to AsooYeshua’s WhatsApp!`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages((prev) => [...prev, confirmMsg]);
+        } else {
+          throw new Error('Firebase did not return a valid document reference.');
+        }
       } catch (dbErr) {
         handleFirestoreError(dbErr, OperationType.CREATE, 'bookings');
+        throw dbErr;
       }
-
-      setBookingId(docRef.id);
-      setBookingSuccess(true);
-      
-      // Push confirmation to chat as well
-      const confirmMsg: ChatMessage = {
-        id: Math.random().toString(),
-        role: 'assistant',
-        content: `Blessed be God! I have successfully registered your prayer and consultation call request for ${bookingForm.date} at ${bookingForm.time}.\n\nPlease click the button below to send this notification instantly to AsooYeshua’s WhatsApp!`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages((prev) => [...prev, confirmMsg]);
 
     } catch (err) {
       console.error('Error saving booking:', err);

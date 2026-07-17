@@ -64,7 +64,7 @@ export default function BlogSection({ onSelectProduct, isActive = false }: BlogS
   };
 
   // Admin access
-  const [isAdmin, setIsAdmin] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [adminPass, setAdminPass] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -246,10 +246,14 @@ export default function BlogSection({ onSelectProduct, isActive = false }: BlogS
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsAdmin(true);
-    setShowAdminLogin(false);
-    setAdminPass('');
-    setLoginError('');
+    if (adminPass === 'Yeshua777') {
+      setIsAdmin(true);
+      setShowAdminLogin(false);
+      setAdminPass('');
+      setLoginError('');
+    } else {
+      setLoginError('Incorrect passcode. Please try again.');
+    }
   };
 
   const handleAddSermon = async (e: React.FormEvent) => {
